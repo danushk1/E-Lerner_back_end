@@ -22,6 +22,7 @@ return new class extends Migration
             $table->decimal('old_price', 8, 2)->default(0);
             $table->decimal('new_price', 8, 2)->default(0);
             $table->string('subject_image')->nullable();
+            $table->string('introduction_video')->nullable();
             $table->integer('rating')->nullable();
             $table->integer('payment_duration')->nullable();
             $table->integer('payment')->nullable();

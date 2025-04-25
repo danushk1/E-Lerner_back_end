@@ -1,7 +1,9 @@
 <?php
 
+use App\Events\NotificationEvent;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/user', function (Request $request) {
@@ -12,6 +14,15 @@ Route::get('/get_subject/{id}',[SubjectController::class,'getSubject']);
 Route::middleware('clerk.auth')->group(function () {
 
     Route::post('/enroll_course', [SubjectController::class, 'enrollCourse']);
+    
+    Route::post('/send_enrollment_notification', function (Request $request) {
 
+        try {
 
+          broadcast(new NotificationEvent($request->all()))->toOthers();
+        } catch (\Exception $e) {
+         Log::error('Error broadcasting event: ' . $e->getMessage());
+        }
+         
+      });
 });
