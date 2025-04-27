@@ -1,6 +1,7 @@
 <?php
 
 use App\Events\NotificationEvent;
+use App\Http\Controllers\MyCoursessController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +15,8 @@ Route::get('/get_subject/{id}',[SubjectController::class,'getSubject']);
 Route::middleware('clerk.auth')->group(function () {
 
     Route::post('/enroll_course', [SubjectController::class, 'enrollCourse']);
-    
+    Route::get('/my_courses/{user_id}', [MyCoursessController::class, 'my_courses']);
+    Route::get('/subject_main_content/{user_id}/{subject_id}', [MyCoursessController::class,'subject_main_content']);
     Route::post('/send_enrollment_notification', function (Request $request) {
 
         try {
