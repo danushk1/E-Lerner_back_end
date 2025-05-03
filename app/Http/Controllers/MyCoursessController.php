@@ -13,10 +13,16 @@ class MyCoursessController extends Controller
         try {
 
             $my_courses = DB::select(
-                "SELECT US.user_id,US.subject_id,S.subject_name,S.rating,s.subject_image FROM user_to_subjects US
-                            INNER JOIN subjects S ON S.subject_id = US.subject_id
-                                        WHERE US.user_id = '$user_id' GROUP BY Us.subject_id"
-               
+                "SELECT US.user_id, US.subject_id,
+                        MAX(S.subject_name) as subject_name,
+                        MAX(S.rating) as rating,
+                        MAX(S.subject_image) as subject_image
+                 FROM user_to_subjects US
+                 INNER JOIN subjects S ON S.subject_id = US.subject_id
+                 WHERE US.user_id = ?
+                 GROUP BY US.subject_id, US.user_id",
+                [$user_id]  // Bind the user_id string safely
+            
             );
 
             return response()->json(["my_courses" => $my_courses]);
