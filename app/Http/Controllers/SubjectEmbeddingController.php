@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Subject;
+use App\Models\subject;
 use App\Services\OpenAIEmbeddingService;
 
 class SubjectEmbeddingController extends Controller
