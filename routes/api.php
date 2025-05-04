@@ -5,6 +5,8 @@ use App\Http\Controllers\Api\OpenAIController;
 use App\Http\Controllers\EmbeddingController;
 use App\Http\Controllers\MyCoursessController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\SubjectEmbeddingController;
+use App\Http\Controllers\SubjectSearchController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Route;
@@ -32,3 +34,5 @@ Route::middleware('clerk.auth')->group(function () {
 });
 Route::post('/chat', [OpenAIController::class, 'chat']);
 Route::post('/embeddings/subjects', [EmbeddingController::class, 'createSubjectEmbeddings']);
+Route::get('/embedding/subject/{id}', [SubjectEmbeddingController::class, 'generate']);
+Route::post('/search/subjects', [SubjectSearchController::class, 'search']);
