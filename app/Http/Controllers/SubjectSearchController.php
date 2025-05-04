@@ -2,7 +2,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use App\Models\Subject;
+use App\Models\subject;
 use App\Services\OpenAIEmbeddingService;
 
 class SubjectSearchController extends Controller
@@ -14,7 +14,7 @@ class SubjectSearchController extends Controller
 
         $results = [];
 
-        foreach (Subject::whereNotNull('embedding')->get() as $subject) {
+        foreach (subject::whereNotNull('embedding')->get() as $subject) {
             $subjectEmbedding = json_decode($subject->embedding, true);
             $score = $this->cosineSimilarity($queryEmbedding, $subjectEmbedding);
 
