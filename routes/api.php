@@ -2,6 +2,7 @@
 
 use App\Events\NotificationEvent;
 use App\Http\Controllers\Api\OpenAIController;
+use App\Http\Controllers\EmbeddingController;
 use App\Http\Controllers\MyCoursessController;
 use App\Http\Controllers\SubjectController;
 use Illuminate\Http\Request;
@@ -30,3 +31,4 @@ Route::middleware('clerk.auth')->group(function () {
       });
 });
 Route::post('/chat', [OpenAIController::class, 'chat']);
+Route::post('/embeddings/subjects', [EmbeddingController::class, 'createSubjectEmbeddings']);

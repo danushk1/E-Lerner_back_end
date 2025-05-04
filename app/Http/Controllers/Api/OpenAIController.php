@@ -8,12 +8,13 @@ use App\Http\Controllers\Controller;
 
 class OpenAIController extends Controller
 {
-    public function chat(Request $request)
-    {
-        $request->validate([
-            'message' => 'required|string',
-        ]);
+   public function chat(Request $request)
+{
+    $request->validate([
+        'message' => 'required|string',
+    ]);
 
+    try {
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
             'Content-Type' => 'application/json',
@@ -25,12 +26,22 @@ class OpenAIController extends Controller
             ],
         ]);
 
+
         if ($response->failed()) {
-            return response()->json(['error' => 'OpenAI API failed.'], 500);
+           
+            return response()->json([
+                'error' => 'OpenAI API call failed',
+                'details' => json_decode($response->body(), true),
+            ], $response->status());
         }
 
         return response()->json([
             'reply' => $response['choices'][0]['message']['content']
         ]);
+    } catch (\Exception $e) {
+        
+        return response()->json(['error' => 'Server error', 'message' => $e->getMessage()], 500);
     }
+}
+// system prompt add 
 }
