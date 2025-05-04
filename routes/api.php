@@ -2,6 +2,7 @@
 
 use App\Events\NotificationEvent;
 use App\Http\Controllers\Api\OpenAIController;
+use App\Http\Controllers\ChartAssistantController;
 use App\Http\Controllers\EmbeddingController;
 use App\Http\Controllers\MyCoursessController;
 use App\Http\Controllers\SubjectController;
@@ -36,3 +37,4 @@ Route::post('/chat', [OpenAIController::class, 'chat']);
 Route::post('/embeddings/subjects', [EmbeddingController::class, 'createSubjectEmbeddings']);
 Route::get('/embedding/subject/{id}', [SubjectEmbeddingController::class, 'generate']);
 Route::post('/search/subjects', [SubjectSearchController::class, 'search']);
+Route::post('/chart/generate', [ChartAssistantController::class, 'generate']);

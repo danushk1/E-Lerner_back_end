@@ -10,7 +10,7 @@ class SubjectEmbeddingController extends Controller
     public function generate($id, OpenAIEmbeddingService $embedder)
     {
         $subject = subject::findOrFail($id);
-        $text = $subject->subject_title . ' ' . $subject->description . ' ' . $subject->subject_grade . ' ' . $subject->new_price;
+        $text = $subject->subject_title . ' ' . $subject->description . ' ' . $subject->subject_grade . ' ' . $subject->new_price. ' ' . $subject->rating;
         $embedding = $embedder->getEmbedding($text);
 
         $subject->embedding = json_encode($embedding);
