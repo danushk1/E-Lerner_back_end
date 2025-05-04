@@ -12,7 +12,7 @@ class OpenAIEmbeddingService
             'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
         ])->post('https://api.openai.com/v1/embeddings', [
             'input' => $text,
-            'model' => 'text-embedding-3-small',
+            'model' => 'gpt-4-turbo',
         ]);
 
         return $response->json()['data'][0]['embedding'];
