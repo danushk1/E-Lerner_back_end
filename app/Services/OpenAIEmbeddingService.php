@@ -14,7 +14,7 @@ class OpenAIEmbeddingService
             'Content-Type'  => 'application/json',
         ])->post('https://api.openai.com/v1/embeddings', [
             'input' => $text,
-            'model' => 'text-embedding-3-small',
+            'model' => 'gpt-4-turbo',
         ]);
 
         if (!$response->successful()) {
