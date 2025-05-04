@@ -4,31 +4,29 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Exception;
 
 class OpenAIEmbeddingService
 {
     public function getEmbedding(string $text): array
     {
-        $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
-            'Content-Type'  => 'application/json',
-        ])->post('https://api.openai.com/v1/embeddings', [
-            'input' => $text,
-            'model' => 'gpt-4-turbo',
-        ]);
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+            ])->post('https://api.openai.com/v1/embeddings', [
+                'input' => $text,
+                'model' => env('OPENAI_EMBEDDING_MODEL', 'text-embedding-3-small'),
+            ]);
 
-        if (!$response->successful()) {
-            Log::error('OpenAI Error: ' . $response->body());
-            throw new \Exception('Failed to get embedding from OpenAI.');
+            if (!$response->successful()) {
+                Log::error('OpenAI API error: ' . $response->body());
+                throw new Exception('Failed to get embedding from OpenAI.');
+            }
+
+            return $response->json()['data'][0]['embedding'];
+        } catch (Exception $e) {
+            Log::error('Embedding error: ' . $e->getMessage());
+            throw $e;
         }
-
-        $json = $response->json();
-
-        if (!isset($json['data'][0]['embedding'])) {
-            Log::error('Embedding missing: ' . json_encode($json));
-            throw new \Exception('Invalid embedding response.');
-        }
-
-        return $json['data'][0]['embedding'];
     }
 }
