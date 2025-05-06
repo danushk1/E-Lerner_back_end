@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\item_historys;
+use App\Models\item_history;
 use App\Models\subject;
 use App\Services\OpenAIEmbeddingService;
 
@@ -10,7 +10,7 @@ class SubjectEmbeddingController extends Controller
 {
     public function generate($id, OpenAIEmbeddingService $embedder)
     {
-        $items = item_historys::all();
+        $items = item_history::all();
         foreach ($items as $item) {
             $text = $item->description ?? ''; // ✅ Adjust this to your actual text field
 
