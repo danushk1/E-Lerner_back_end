@@ -12,7 +12,7 @@ class SubjectEmbeddingController extends Controller
     {
         $items = item_history::all();
         foreach ($items as $item) {
-            $text = $item->description ?? ''; // ✅ Adjust this to your actual text field
+            $text = $item->description ?? ''; 
 
             if (trim($text) === '') {
                 continue; // Skip empty descriptions
