@@ -27,7 +27,8 @@ You are a chart assistant. Convert the user's request into a JSON object with th
   ]
 }
 
-The database table is `item_histories`. Available columns are:
+The database table is `item_historys
+`. Available columns are:
 - id (int)
 - external_number (string)
 - branch_id (int)
@@ -75,7 +76,7 @@ EOT;
             $groupBy = $instructions['group_by'] ?? null;
             $filters = $instructions['filters'] ?? [];
 
-            $queryBuilder = DB::table('item_histories');
+            $queryBuilder = DB::table('item_historys');
 
             // 4. Apply filters
             foreach ($filters as $filter) {
