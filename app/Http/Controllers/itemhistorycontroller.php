@@ -11,78 +11,96 @@ use Illuminate\Support\Facades\Http;
 class itemhistorycontroller extends Controller
 {
     public function generate(Request $request)
-    {
-        $query = $request->input('query');
-
-        // Step 1: Ask OpenAI to convert to chart instructions
-        $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-4',
-            'messages' => [
-                [
-                    'role' => 'system',
-                    'content' => 'You are a chart assistant. Given a natural language query, respond ONLY with a JSON object using the following structure:
 {
-  "chart_type": "bar | line | pie | scatter",
-  "action": "sum | count | avg | max | min",
-  "field": "field_name_in_table",
-  "group_by": "field_name_in_table"
+    $query = $request->input('query');
+
+    // 1. Ask OpenAI to interpret the query
+    $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
+        'model' => 'gpt-4',
+        'messages' => [
+            [
+                'role' => 'system',
+                'content' => 'You are a chart assistant. Convert the user query into structured JSON with the format:
+{
+  "chart_type": "bar | line | pie | scatter | table",
+  "action": "sum | count | avg | max | min | none",
+  "field": "column_to_aggregate",
+  "group_by": "column_name_or_null",
+  "filters": [
+    {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
+  ]
 }'
-                ],
-                ['role' => 'user', 'content' => $query]
+            ],
+            ['role' => 'user', 'content' => $query]
+        ]
+    ]);
+
+    $responseContent = $openAiResponse->json();
+
+    if (!isset($responseContent['choices'][0]['message']['content'])) {
+        return response()->json(['error' => 'OpenAI response missing'], 500);
+    }
+
+    try {
+        $instructions = json_decode($responseContent['choices'][0]['message']['content'], true);
+
+        $chartType = $instructions['chart_type'] ?? 'table';
+        $action = $instructions['action'] ?? 'none';
+        $field = $instructions['field'] ?? null;
+        $groupBy = $instructions['group_by'] ?? null;
+        $filters = $instructions['filters'] ?? [];
+
+        $queryBuilder = DB::table('item_histories');
+
+        // 2. Apply filters
+        foreach ($filters as $filter) {
+            $column = $filter['column'];
+            $operator = $filter['operator'];
+            $value = $filter['value'];
+
+            if ($operator === 'between' && is_array($value) && count($value) === 2) {
+                $queryBuilder->whereBetween($column, [$value[0], $value[1]]);
+            } else {
+                $queryBuilder->where($column, $operator, $value);
+            }
+        }
+
+        // 3. Select columns
+        if ($action !== 'none' && $field) {
+            $queryBuilder->selectRaw(($groupBy ? "$groupBy, " : "") . "$action($field) as value");
+        } elseif ($field) {
+            $queryBuilder->select($field . ' as value');
+        }
+
+        if ($groupBy) {
+            $queryBuilder->groupBy($groupBy);
+        }
+
+        $data = $queryBuilder->get();
+
+        // 4. Format for frontend
+        $formattedData = $data->map(function ($row) use ($groupBy) {
+            return [
+                'name' => $groupBy ? $row->$groupBy : '',
+                'value' => $row->value
+            ];
+        });
+
+        return response()->json([
+            'charts' => [
+                [
+                    'type' => $chartType,
+                    'data' => $formattedData
+                ]
             ]
         ]);
 
-        $responseContent = $openAiResponse->json();
-
-        if (!isset($responseContent['choices'][0]['message']['content'])) {
-            return response()->json(['error' => 'Invalid OpenAI response'], 500);
-        }
-
-        $instructionJson = $responseContent['choices'][0]['message']['content'];
-
-        try {
-            $instructions = json_decode($instructionJson, true);
-
-            $chartType = $instructions['chart_type'];
-            $action = $instructions['action'];
-            $field = $instructions['field'];
-            $groupBy = $instructions['group_by'];
-
-            $allowedActions = ['sum', 'count', 'avg', 'max', 'min'];
-            $allowedFields = [
-                'quantity', 'free_quantity', 'whole_sale_price',
-                'retial_price', 'cost_price', 'item_id',
-                'branch_id', 'location_id'
-            ];
-
-            if (!in_array($action, $allowedActions) || !in_array($field, $allowedFields) || !in_array($groupBy, $allowedFields)) {
-                return response()->json(['error' => 'Invalid field or action'], 400);
-            }
-
-            $rawData = DB::table('item_histories')
-                ->select($groupBy, DB::raw("{$action}({$field}) as value"))
-                ->groupBy($groupBy)
-                ->get();
-
-            // Optional: format keys to frontend-friendly names
-            $formattedData = $rawData->map(function ($row) use ($groupBy) {
-                return [
-                    'name' => $row->$groupBy,
-                    'value' => $row->value
-                ];
-            });
-
-            return response()->json([
-                'charts' => [
-                    [
-                        'type' => $chartType,
-                        'data' => $formattedData
-                    ]
-                ]
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to parse or process instructions', 'details' => $e->getMessage()], 500);
-        }
+    } catch (\Exception $e) {
+        return response()->json([
+            'error' => 'Processing error',
+            'details' => $e->getMessage()
+        ], 500);
     }
+}
+
 }
