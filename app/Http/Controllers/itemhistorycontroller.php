@@ -42,7 +42,7 @@ class itemhistorycontroller extends Controller
 
         try {
             $instructions = json_decode($instructionJson, true);
-dd($instructions);
+
             $chartType = $instructions['chart_type'];
             $action = $instructions['action'];
             $field = $instructions['field'];
