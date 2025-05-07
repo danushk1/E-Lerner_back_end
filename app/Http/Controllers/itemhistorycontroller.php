@@ -50,7 +50,7 @@ class itemhistorycontroller extends Controller
         $groupBy = $instructions['group_by'] ?? null;
         $filters = $instructions['filters'] ?? [];
 
-        $queryBuilder = DB::table('item_histories');
+        $queryBuilder = DB::table('item_historys');
 
         // 2. Apply filters
         foreach ($filters as $filter) {
