@@ -52,7 +52,7 @@ EOT;
 
         // 2. Ask OpenAI to convert user query to structured chart instructions
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
-            'model' => 'gpt-4',
+            'model' => 'gpt-4-turbo',
             'messages' => [
                 ['role' => 'system', 'content' => $systemMessage],
                 ['role' => 'user', 'content' => $query],
@@ -77,7 +77,9 @@ EOT;
             $filters = $instructions['filters'] ?? [];
 
             $queryBuilder = DB::table('item_historys');
-
+            if ($action === 'none' && $field === 'quantity') {
+                $action = 'sum'; // Automatically sum quantity if not specified
+            }
             // 4. Apply filters
             foreach ($filters as $filter) {
                 $column = $filter['column'];
