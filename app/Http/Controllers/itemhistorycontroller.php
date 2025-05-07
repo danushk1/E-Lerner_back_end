@@ -27,8 +27,8 @@ You are a chart assistant. Convert the user's request into a JSON object with th
   ]
 }
 
-The database table is `item_historys
-`. Available columns are:
+The database table is `item_historys`.
+Available columns are:
 - id (int)
 - external_number (string)
 - branch_id (int)
@@ -44,6 +44,7 @@ The database table is `item_historys
 - retial_price (decimal)
 - expire_date (date)
 - cost_price (decimal)
+- embedding (json) // We can retrieve and use this for similarity searches or recommendations
 - created_at (timestamp)
 - updated_at (timestamp)
 
@@ -69,18 +70,17 @@ EOT;
         // 3. Parse OpenAI response
         try {
             $instructions = json_decode($message, true);
-dd($instructions);
+
             $chartType = $instructions['chart_type'] ?? 'table';
             $action = $instructions['action'] ?? 'none';
             $field = $instructions['field'] ?? null;
             $groupBy = $instructions['group_by'] ?? null;
             $filters = $instructions['filters'] ?? [];
 
+            // 4. Initialize query builder
             $queryBuilder = DB::table('item_historys');
-            if ($action === 'none' && $field === 'quantity') {
-                $action = 'sum'; // Automatically sum quantity if not specified
-            }
-            // 4. Apply filters
+
+            // 5. Apply filters (including embedding if necessary)
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
@@ -93,7 +93,7 @@ dd($instructions);
                 }
             }
 
-            // 5. Select and group
+            // 6. Select and group (with embedding processing if necessary)
             if ($action !== 'none' && $field) {
                 $select = ($groupBy ? "$groupBy, " : "") . "$action($field) as value";
                 $queryBuilder->selectRaw($select);
@@ -105,13 +105,27 @@ dd($instructions);
                 $queryBuilder->groupBy($groupBy);
             }
 
+            // Retrieve results
             $results = $queryBuilder->get();
 
-            // 6. Format results for chart
+            // Optionally, retrieve and process embeddings if needed (e.g., for similarity searches)
+            $embeddings = DB::table('item_historys')
+                ->select('item_history_id', 'embedding')
+                ->get();
+
+            // Return data (including embeddings if needed)
             $formattedData = $results->map(function ($row) use ($groupBy) {
                 return [
                     'name' => $groupBy ? $row->$groupBy : '',
                     'value' => $row->value,
+                ];
+            });
+
+            // Optionally, process embeddings for recommendations or similarity analysis
+            $embeddingData = $embeddings->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'embedding' => json_decode($item->embedding) // Decode the JSON embedding data
                 ];
             });
 
@@ -121,7 +135,8 @@ dd($instructions);
                         'type' => $chartType,
                         'data' => $formattedData,
                     ]
-                ]
+                ],
+                'embeddings' => $embeddingData, // Send embeddings if necessary
             ]);
         } catch (\Exception $e) {
             return response()->json([
