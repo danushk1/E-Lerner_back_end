@@ -61,7 +61,7 @@ EOT;
         ]);
 
         $openAiData = $openAiResponse->json();
-dd($openAiData);
+
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
