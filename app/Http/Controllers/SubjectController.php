@@ -22,7 +22,7 @@ class SubjectController extends Controller
       return response()->json(['message' => $e->getMessage()], 400);
     }
   }
-
+///ui
   public function getSubject($id)
   {
     try {
