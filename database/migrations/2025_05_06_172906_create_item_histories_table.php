@@ -26,6 +26,7 @@ return new class extends Migration
             $table->decimal('retial_price',10,2)->nullable();
             $table->date('expire_date')->nullable();
             $table->decimal('cost_price')->nullable();
+            $table->json('embedding')->nullable()->after('description');
             $table->timestamps();
         });
     }
