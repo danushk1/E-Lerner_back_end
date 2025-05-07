@@ -67,7 +67,7 @@ EOT;
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
-        // 3. Parse OpenAI response
+        // 3. Parse OpenAI responsep
         try {
             $instructions = json_decode($message, true);
 
