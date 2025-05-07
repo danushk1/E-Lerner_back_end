@@ -69,7 +69,7 @@ EOT;
         // 3. Parse OpenAI response
         try {
             $instructions = json_decode($message, true);
-
+dd($instructions);
             $chartType = $instructions['chart_type'] ?? 'table';
             $action = $instructions['action'] ?? 'none';
             $field = $instructions['field'] ?? null;
