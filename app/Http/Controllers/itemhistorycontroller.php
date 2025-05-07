@@ -39,10 +39,10 @@ class itemhistorycontroller extends Controller
         }
 
         $instructionJson = $responseContent['choices'][0]['message']['content'];
-dd($instructionJson);
+
         try {
             $instructions = json_decode($instructionJson, true);
-
+dd($instructions);
             $chartType = $instructions['chart_type'];
             $action = $instructions['action'];
             $field = $instructions['field'];
