@@ -15,58 +15,39 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class itemhistorycontroller extends Controller
 {
+
     public function generate(Request $request)
     {
         $query = $request->input('query');
 
         // 1. System message includes exact table schema to prevent column name mistakes
         $systemMessage = <<<EOT
-        You are a chart assistant. Convert the user's request into a JSON object with this format:
+        You are a report/chart assistant. Convert the user's request into a **valid JSON object** only (no explanation) using this format:
+        
         {
-          "output": "chart | pdf | excel | table",
+          "output": "pdf | excel | chart | table",
+          "title": "report title or null",
           "chart_type": "bar | line | pie | scatter | table",
           "action": "sum | count | avg | max | min | none",
-          "field": "column_to_aggregate",
+          "field": "column_to_aggregate_or_null",
           "group_by": "column_name_or_null",
           "filters": [
             {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
-          ]
+          ],
+          "columns": ["transaction_date", "item_Name", "quantity", "branch_name", "external_number"]
         }
         
-        The database tables are:
+        Use ONLY these columns from `item_historys`:
+        - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description,
+          item_id, quantity, free_quantity, batch_number, whole_sale_price, retial_price, expire_date,
+          cost_price, created_at, updated_at
         
-        **item_historys**
-        - item_history_id (int)
-        - external_number (string)
-        - branch_id (int)
-        - location_id (int)
-        - document_number (int)
-        - transaction_date (date)
-        - description (string)
-        - item_id (int)
-        - quantity (decimal)
-        - free_quantity (decimal)
-        - batch_number (string)
-        - whole_sale_price (decimal)
-        - retial_price (decimal)
-        - expire_date (date)
-        - cost_price (decimal)
-        - created_at (timestamp)
-        - updated_at (timestamp)
+        Joins allowed:
+        - items on item_historys.item_id = items.item_id (for item_Name)
+        - branches on item_historys.branch_id = branches.branch_id (for branch_name)
         
-        **items**
-        - item_id (int)
-        - item_Name (string)
-        
-        **branches**
-        - branch_id (int)
-        - branch_name (string)
-        
-        You are allowed to join `item_historys` with `items` using `item_historys.item_id = items.item_id` and with `branches` using `item_historys.branch_id = branches.branch_id`.
-        
-        Use only these columns. Do not invent any column names.
+        Return only valid JSON. Never invent columns.
         EOT;
-        
 
         // 2. Ask OpenAI to convert user query to structured chart instructions
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
@@ -86,99 +67,107 @@ class itemhistorycontroller extends Controller
 
         try {
             $instructions = json_decode($message, true);
-            $outputType = $instructions['output'] ?? 'chart';
+    
+            $outputType = $instructions['output'] ?? 'table';
             $chartType = $instructions['chart_type'] ?? 'table';
             $action = $instructions['action'] ?? 'none';
             $field = $instructions['field'] ?? null;
             $groupBy = $instructions['group_by'] ?? null;
             $filters = $instructions['filters'] ?? [];
-
-            $queryBuilder = DB::table('item_historys');
-
-            // Check if joins are needed
-            $joinItems = false;
-            $joinBranches = false;
-
-            $allFields = [$field, $groupBy];
-            foreach ($filters as $filter) {
-                $allFields[] = $filter['column'];
-            }
-
-            foreach ($allFields as $col) {
-                if (in_array($col, ['item_Name'])) $joinItems = true;
-                if (in_array($col, ['branch_name'])) $joinBranches = true;
-            }
-
-            if ($joinItems) {
-                $queryBuilder->join('items', 'item_historys.item_id', '=', 'items.item_id');
-            }
-
-            if ($joinBranches) {
-                $queryBuilder->join('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
-            }
-
-            // Resolve column references
-            $selectField = $field;
-            $selectGroup = $groupBy;
-
-            if ($field === 'item_Name') $selectField = 'items.item_Name';
-            if ($field === 'branch_name') $selectField = 'branches.branch_name';
-
-            if ($groupBy === 'item_Name') $selectGroup = 'items.item_Name';
-            if ($groupBy === 'branch_name') $selectGroup = 'branches.branch_name';
-
+            $columns = $instructions['columns'] ?? [];
+            $reportTitle = $instructions['title'] ?? 'stock_balance_report';
+    
+            $queryBuilder = DB::table('item_historys')
+                ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
+                ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
+    
             // Apply filters
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
-
-                if ($column === 'item_Name') $column = 'items.item_Name';
-                if ($column === 'branch_name') $column = 'branches.branch_name';
-
+    
                 if ($operator === 'between' && is_array($value)) {
                     $queryBuilder->whereBetween($column, $value);
                 } else {
                     $queryBuilder->where($column, $operator, $value);
                 }
             }
-
-            // Select and group
+    
+            // Select data for output
+            if ($outputType === 'pdf' || $outputType === 'excel') {
+                // Select only the requested or default columns
+                if (empty($columns)) {
+                    $columns = [
+                        'transaction_date',
+                        'items.item_Name as item_Name',
+                        'item_historys.quantity',
+                        'branches.branch_name as branch_name',
+                        'item_historys.external_number'
+                    ];
+                } else {
+                    $columns = array_map(function ($col) {
+                        return match ($col) {
+                            'item_Name' => 'items.item_Name as item_Name',
+                            'branch_name' => 'branches.branch_name as branch_name',
+                            default => "item_historys.$col"
+                        };
+                    }, $columns);
+                }
+    
+                $queryBuilder->select($columns);
+                $results = $queryBuilder->get();
+    
+                if ($outputType === 'pdf') {
+                    $pdf = Pdf::loadView('exports.chart-pdf', [
+                        'data' => $results,
+                        'title' => $reportTitle
+                    ]);
+                    return $pdf->download(Str::slug($reportTitle) . '.pdf');
+                }
+    
+                if ($outputType === 'excel') {
+                    return Excel::download(new class($results, $reportTitle) implements \Maatwebsite\Excel\Concerns\FromCollection, \Maatwebsite\Excel\Concerns\WithTitle {
+                        protected $data, $title;
+                        public function __construct($data, $title) {
+                            $this->data = $data;
+                            $this->title = $title;
+                        }
+                        public function collection() {
+                            return $this->data;
+                        }
+                        public function title(): string {
+                            return $this->title;
+                        }
+                    }, Str::slug($reportTitle) . '.xlsx');
+                }
+            }
+    
+            // For chart/table data
+            if ($action === 'none' && $field === 'quantity') {
+                $action = 'sum'; // Default for quantity
+            }
+    
             if ($action !== 'none' && $field) {
-                $select = ($groupBy ? "$selectGroup, " : "") . "$action($selectField) as value";
+                $select = ($groupBy ? "$groupBy, " : "") . "$action($field) as value";
                 $queryBuilder->selectRaw($select);
             } elseif ($field) {
-                $queryBuilder->select("$selectField as value");
+                $queryBuilder->select("$field as value");
             }
-
+    
             if ($groupBy) {
-                $queryBuilder->groupBy($selectGroup);
+                $queryBuilder->groupBy($groupBy);
             }
-
+    
             $results = $queryBuilder->get();
-
-            if ($outputType === 'pdf') {
-                $pdf = Pdf::loadView('exports.chart-pdf', ['data' => $results]);
-                return $pdf->download('chart.pdf');
-            }
-
-            if ($outputType === 'excel') {
-                $filename = 'chart_export_' . now()->format('Ymd_His') . '.xlsx';
-                return Excel::download(new class($results) implements \Maatwebsite\Excel\Concerns\FromCollection {
-                    protected $data;
-                    public function __construct($data) { $this->data = $data; }
-                    public function collection() { return new Collection($this->data); }
-                }, $filename);
-            }
-
-            // Default: chart JSON
+    
             $formattedData = $results->map(function ($row) use ($groupBy) {
                 return [
                     'name' => $groupBy ? $row->$groupBy : '',
                     'value' => $row->value,
                 ];
             });
-
+    
             return response()->json([
                 'charts' => [
                     [
@@ -187,6 +176,7 @@ class itemhistorycontroller extends Controller
                     ]
                 ]
             ]);
+    
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to process chart query',

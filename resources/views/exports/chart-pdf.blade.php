@@ -1,28 +1,34 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Chart Report</title>
+    <title>{{ $title }}</title>
     <style>
-        body { font-family: sans-serif; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        table, th, td {
+            border: 1px solid #000;
+            padding: 5px;
+        }
     </style>
 </head>
 <body>
-    <h2>Chart Report</h2>
+    <h2>{{ $title }}</h2>
     <table>
         <thead>
             <tr>
-                @foreach($data->first() ?? [] as $key => $val)
-                    <th>{{ $key }}</th>
+                @foreach(array_keys((array) $data[0] ?? []) as $column)
+                    <th>{{ ucwords(str_replace('_', ' ', $column)) }}</th>
                 @endforeach
             </tr>
         </thead>
         <tbody>
             @foreach($data as $row)
                 <tr>
-                    @foreach($row as $val)
-                        <td>{{ $val }}</td>
+                    @foreach($row as $value)
+                        <td>{{ $value }}</td>
                     @endforeach
                 </tr>
             @endforeach
