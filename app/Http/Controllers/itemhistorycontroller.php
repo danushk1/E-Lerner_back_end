@@ -95,8 +95,8 @@ class itemhistorycontroller extends Controller
             // Handle columns
             if (empty($columns)) {
                 $columns = [
-                    'transaction_date',
-                    'items.item_Name as item_Name',
+                    'item_historys.transaction_date',
+                    'items.item_Name as item_name', // Correctly reference item_name from items table
                     'item_historys.quantity',
                     'branches.branch_name as branch_name',
                     'item_historys.external_number'
@@ -104,14 +104,13 @@ class itemhistorycontroller extends Controller
             } else {
                 $columns = array_map(function ($col) {
                     return match ($col) {
-                        'item_Name' => 'items.item_Name as item_Name',
+                        'item_name' => 'items.item_Name as item_name', // Correctly reference item_name from items table
                         'branch_name' => 'branches.branch_name as branch_name',
                         default => "item_historys.$col"
                     };
                 }, $columns);
-                
             }
-
+    
             // Handle PDF or Excel output
             if (in_array($outputType, ['pdf', 'excel'])) {
                 $queryBuilder->select($columns);
