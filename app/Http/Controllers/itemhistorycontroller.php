@@ -126,7 +126,9 @@ class itemhistorycontroller extends Controller
                         'data' => $results,
                         'title' => $reportTitle
                     ]);
-                    return $pdf->download(Str::slug($reportTitle) . '.pdf');
+                    return response()->streamDownload(function () use ($pdf) {
+                        echo $pdf->output();
+                    }, Str::slug($reportTitle) . '.pdf');
                 }
 
                 if ($outputType === 'excel') {
@@ -144,6 +146,7 @@ class itemhistorycontroller extends Controller
                         }
                     }, Str::slug($reportTitle) . '.xlsx');
                 }
+            
             }
 
             // Chart data
