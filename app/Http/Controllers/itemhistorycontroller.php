@@ -58,7 +58,7 @@ class itemhistorycontroller extends Controller
 
         $openAiData = $openAiResponse->json();
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
-
+dd($message);
         if (!$message) {
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
