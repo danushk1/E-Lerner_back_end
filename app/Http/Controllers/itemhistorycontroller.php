@@ -8,7 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Maatwebsite\Excel\Facades\Excel;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Support\Str;
 use Illuminate\Support\Collection;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 
 class itemhistorycontroller extends Controller
@@ -17,54 +19,56 @@ class itemhistorycontroller extends Controller
     {
         $query = $request->input('query');
 
-        // 1. Prompt sent to OpenAI
+        // 1. System message includes exact table schema to prevent column name mistakes
         $systemMessage = <<<EOT
-You are a chart assistant. Convert the user's request into a JSON object with this format:
-{
-  "output": "chart | pdf | excel | table",
-  "chart_type": "bar | line | pie | scatter | table",
-  "action": "sum | count | avg | max | min | none",
-  "field": "column_to_aggregate",
-  "group_by": "column_name_or_null",
-  "filters": [
-    {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
-  ]
-}
+        You are a chart assistant. Convert the user's request into a JSON object with this format:
+        {
+          "output": "chart | pdf | excel | table",
+          "chart_type": "bar | line | pie | scatter | table",
+          "action": "sum | count | avg | max | min | none",
+          "field": "column_to_aggregate",
+          "group_by": "column_name_or_null",
+          "filters": [
+            {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
+          ]
+        }
+        
+        The database tables are:
+        
+        **item_historys**
+        - item_history_id (int)
+        - external_number (string)
+        - branch_id (int)
+        - location_id (int)
+        - document_number (int)
+        - transaction_date (date)
+        - description (string)
+        - item_id (int)
+        - quantity (decimal)
+        - free_quantity (decimal)
+        - batch_number (string)
+        - whole_sale_price (decimal)
+        - retial_price (decimal)
+        - expire_date (date)
+        - cost_price (decimal)
+        - created_at (timestamp)
+        - updated_at (timestamp)
+        
+        **items**
+        - item_id (int)
+        - item_Name (string)
+        
+        **branches**
+        - branch_id (int)
+        - branch_name (string)
+        
+        You are allowed to join `item_historys` with `items` using `item_historys.item_id = items.item_id` and with `branches` using `item_historys.branch_id = branches.branch_id`.
+        
+        Use only these columns. Do not invent any column names.
+        EOT;
+        
 
-The database tables are:
-
-**item_historys**
-- item_history_id (int)
-- external_number (string)
-- branch_id (int)
-- location_id (int)
-- document_number (int)
-- transaction_date (date)
-- description (string)
-- item_id (int)
-- quantity (decimal)
-- free_quantity (decimal)
-- batch_number (string)
-- whole_sale_price (decimal)
-- retial_price (decimal)
-- expire_date (date)
-- cost_price (decimal)
-- created_at (timestamp)
-- updated_at (timestamp)
-
-**items**
-- item_id (int)
-- item_Name (string)
-
-**branches**
-- branch_id (int)
-- branch_name (string)
-
-You are allowed to join `item_historys` with `items` using `item_historys.item_id = items.item_id` and with `branches` using `item_historys.branch_id = branches.branch_id`.
-
-Use only these columns. Do not invent any column names.
-EOT;
-
+        // 2. Ask OpenAI to convert user query to structured chart instructions
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4-turbo',
             'messages' => [
