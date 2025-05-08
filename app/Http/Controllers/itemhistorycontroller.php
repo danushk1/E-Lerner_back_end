@@ -109,6 +109,7 @@ class itemhistorycontroller extends Controller
                         default => "item_historys.$col"
                     };
                 }, $columns);
+                
             }
 
             // Handle PDF or Excel output
