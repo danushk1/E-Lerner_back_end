@@ -64,8 +64,8 @@ class itemhistorycontroller extends Controller
         }
 
         try {
-            $instructions = json_decode($message, true);
-    
+            $instructions = json_decode($openAiData['choices'][0]['message']['content'], true);
+
             $outputType = $instructions['output'] ?? 'table';
             $chartType = $instructions['chart_type'] ?? 'table';
             $action = $instructions['action'] ?? 'none';
@@ -74,48 +74,52 @@ class itemhistorycontroller extends Controller
             $filters = $instructions['filters'] ?? [];
             $columns = $instructions['columns'] ?? [];
             $reportTitle = $instructions['title'] ?? 'stock_balance_report';
-    
+
             $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
-    
+
             // Apply filters
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
-    
+
                 if ($operator === 'between' && is_array($value)) {
                     $queryBuilder->whereBetween($column, $value);
                 } else {
                     $queryBuilder->where($column, $operator, $value);
                 }
             }
-    
-            // Select data for output
-            if ($outputType === 'pdf' || $outputType === 'excel') {
-                // Select only the requested or default columns
-                if (empty($columns)) {
-                    $columns = [
-                        'transaction_date',
-                        'items.item_Name as item_Name',
-                        'item_historys.quantity',
-                        'branches.branch_name as branch_name',
-                        'item_historys.external_number'
-                    ];
-                } else {
-                    $columns = array_map(function ($col) {
-                        return match ($col) {
-                            'item_Name' => 'items.item_Name as item_Name',
-                            'branch_name' => 'branches.branch_name as branch_name',
-                            default => "item_historys.$col"
-                        };
-                    }, $columns);
-                }
-    
+
+            // Handle columns
+            if (empty($columns)) {
+                $columns = [
+                    'transaction_date',
+                    'items.item_Name as item_Name',
+                    'item_historys.quantity',
+                    'branches.branch_name as branch_name',
+                    'item_historys.external_number'
+                ];
+            } else {
+                $columns = array_map(function ($col) {
+                    return match ($col) {
+                        'item_Name' => 'items.item_Name as item_Name',
+                        'branch_name' => 'branches.branch_name as branch_name',
+                        default => "item_historys.$col"
+                    };
+                }, $columns);
+            }
+
+            // Handle PDF or Excel output
+            if (in_array($outputType, ['pdf', 'excel'])) {
                 $queryBuilder->select($columns);
                 $results = $queryBuilder->get();
-    
+
+                if ($results->isEmpty()) {
+                    return response()->json(['error' => 'No data found for the requested report.'], 404);
+                }
+
                 if ($outputType === 'pdf') {
                     $pdf = Pdf::loadView('exports.chart-pdf', [
                         'data' => $results,
@@ -123,7 +127,7 @@ class itemhistorycontroller extends Controller
                     ]);
                     return $pdf->download(Str::slug($reportTitle) . '.pdf');
                 }
-    
+
                 if ($outputType === 'excel') {
                     return Excel::download(new class($results, $reportTitle) implements \Maatwebsite\Excel\Concerns\FromCollection, \Maatwebsite\Excel\Concerns\WithTitle {
                         protected $data, $title;
@@ -140,32 +144,32 @@ class itemhistorycontroller extends Controller
                     }, Str::slug($reportTitle) . '.xlsx');
                 }
             }
-    
-            // For chart/table data
+
+            // Chart data
             if ($action === 'none' && $field === 'quantity') {
-                $action = 'sum'; // Default for quantity
+                $action = 'sum';
             }
-    
+
             if ($action !== 'none' && $field) {
                 $select = ($groupBy ? "$groupBy, " : "") . "$action($field) as value";
                 $queryBuilder->selectRaw($select);
             } elseif ($field) {
                 $queryBuilder->select("$field as value");
             }
-    
+
             if ($groupBy) {
                 $queryBuilder->groupBy($groupBy);
             }
-    
+
             $results = $queryBuilder->get();
-    
+
             $formattedData = $results->map(function ($row) use ($groupBy) {
                 return [
                     'name' => $groupBy ? $row->$groupBy : '',
-                    'value' => $row->value,
+                    'value' => $row->value ?? 0,
                 ];
             });
-    
+
             return response()->json([
                 'charts' => [
                     [
@@ -174,10 +178,10 @@ class itemhistorycontroller extends Controller
                     ]
                 ]
             ]);
-    
+
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to process chart query',
+                'error' => 'Failed to process report',
                 'details' => $e->getMessage()
             ], 500);
         }

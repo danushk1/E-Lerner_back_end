@@ -1,29 +1,26 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ $title ?? 'Report' }}</title>
+    <title>{{ $title }}</title>
     <style>
         table {
             width: 100%;
             border-collapse: collapse;
+            font-size: 12px;
         }
         th, td {
-            border: 1px solid #aaa;
+            border: 1px solid #333;
             padding: 5px;
-            text-align: left;
         }
     </style>
 </head>
 <body>
-    <h2>{{ $title ?? 'Stock Report' }}</h2>
-
-    @if($data->isEmpty())
-        <p>No data available for this report.</p>
-    @else
+    <h2>{{ $title }}</h2>
+    @if(count($data) > 0)
         <table>
             <thead>
                 <tr>
-                    @foreach(array_keys((array) $data->first()) as $key)
+                    @foreach(array_keys((array)$data[0]) as $key)
                         <th>{{ ucwords(str_replace('_', ' ', $key)) }}</th>
                     @endforeach
                 </tr>
@@ -31,13 +28,15 @@
             <tbody>
                 @foreach($data as $row)
                     <tr>
-                        @foreach((array) $row as $cell)
-                            <td>{{ $cell }}</td>
+                        @foreach((array)$row as $value)
+                            <td>{{ $value }}</td>
                         @endforeach
                     </tr>
                 @endforeach
             </tbody>
         </table>
+    @else
+        <p>No data available.</p>
     @endif
 </body>
 </html>
