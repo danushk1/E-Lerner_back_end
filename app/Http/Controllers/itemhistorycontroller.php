@@ -55,7 +55,7 @@ class itemhistorycontroller extends Controller
                 ['role' => 'user', 'content' => $query],
             ]
         ]);
-
+dd($openAiResponse->json());
         $openAiData = $openAiResponse->json();
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 dd($message);
