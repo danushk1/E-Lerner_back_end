@@ -20,7 +20,7 @@ class itemhistorycontroller extends Controller
     {
         $query = $request->input('query');
 
-        // 1. System message includes exact table schema to prevent column name mistakes
+       
         $systemMessage = <<<EOT
         You are a strict data assistant. Convert the user's query into this EXACT JSON format:
         
