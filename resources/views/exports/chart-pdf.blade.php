@@ -1,38 +1,43 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{{ $title }}</title>
+    <title>{{ $title ?? 'Report' }}</title>
     <style>
         table {
             width: 100%;
             border-collapse: collapse;
-            font-size: 12px;
         }
-        table, th, td {
-            border: 1px solid #000;
+        th, td {
+            border: 1px solid #aaa;
             padding: 5px;
+            text-align: left;
         }
     </style>
 </head>
 <body>
-    <h2>{{ $title }}</h2>
-    <table>
-        <thead>
-            <tr>
-                @foreach(array_keys((array) $data[0] ?? []) as $column)
-                    <th>{{ ucwords(str_replace('_', ' ', $column)) }}</th>
-                @endforeach
-            </tr>
-        </thead>
-        <tbody>
-            @foreach($data as $row)
+    <h2>{{ $title ?? 'Stock Report' }}</h2>
+
+    @if($data->isEmpty())
+        <p>No data available for this report.</p>
+    @else
+        <table>
+            <thead>
                 <tr>
-                    @foreach($row as $value)
-                        <td>{{ $value }}</td>
+                    @foreach(array_keys((array) $data->first()) as $key)
+                        <th>{{ ucwords(str_replace('_', ' ', $key)) }}</th>
                     @endforeach
                 </tr>
-            @endforeach
-        </tbody>
-    </table>
+            </thead>
+            <tbody>
+                @foreach($data as $row)
+                    <tr>
+                        @foreach((array) $row as $cell)
+                            <td>{{ $cell }}</td>
+                        @endforeach
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @endif
 </body>
 </html>
