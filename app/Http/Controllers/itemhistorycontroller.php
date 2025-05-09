@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
+use App\Exports\GenericExport;
 
 class itemhistorycontroller extends Controller
 {
@@ -18,7 +19,7 @@ class itemhistorycontroller extends Controller
         ]);
 
         $query = $request->input('query');
-        \Log::info('Received Query:', ['query' => $query]);
+      
 
         $systemMessage = <<<EOT
         You are a strict data assistant. Convert the user's query into this EXACT JSON format:
@@ -57,7 +58,7 @@ class itemhistorycontroller extends Controller
             ]);
 
         if ($openAiResponse->failed()) {
-            \Log::error('OpenAI API Failed:', ['status' => $openAiResponse->status(), 'body' => $openAiResponse->body()]);
+         
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
 
@@ -65,7 +66,7 @@ class itemhistorycontroller extends Controller
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
-            \Log::error('Invalid OpenAI Response:', ['data' => $openAiData]);
+          
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
@@ -74,7 +75,7 @@ class itemhistorycontroller extends Controller
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
             }
-            \Log::info('OpenAI Parsed Instructions:', ['instructions' => $instructions]);
+          
 
             $outputType = $instructions['output'] ?? 'table';
             $chartType = $instructions['chart_type'] ?? 'table';
@@ -124,7 +125,7 @@ class itemhistorycontroller extends Controller
                 $results = $queryBuilder->get();
 
                 if ($results->isEmpty()) {
-                    \Log::warning('No data found for query:', ['query' => $query]);
+                   
                     return response()->json(['error' => 'No data found for the requested report'], 404);
                 }
 
@@ -141,12 +142,12 @@ class itemhistorycontroller extends Controller
                     );
                 }
 
-                if ($outputType === 'excel') {
-                    return Excel::download(
-                        new GenericExport($results, $reportTitle, array_map(fn($col) => last(explode(' as ', $col))[0], $columns)),
-                        Str::slug($reportTitle) . '.xlsx'
-                    );
-                }
+                // if ($outputType === 'excel') {
+                //     return Excel::download(
+                //         new GenericExport($results, $reportTitle, array_map(fn($col) => last(explode(' as ', $col))[0], $columns)),
+                //         Str::slug($reportTitle) . '.xlsx'
+                //     );
+                // }
             }
 
             if ($action !== 'none' && $field) {
@@ -163,8 +164,7 @@ class itemhistorycontroller extends Controller
             }
 
             DB::enableQueryLog();
-            $results = $queryBuilder->get();
-            \Log::info('Executed Query:', DB::getQueryLog());
+            $results = $queryBuilder->get();  
 
             $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
                 $data = [
@@ -200,10 +200,10 @@ class itemhistorycontroller extends Controller
                 ],
             ]);
         } catch (\JsonException $e) {
-            \Log::error('JSON Parse Error:', ['message' => $e->getMessage()]);
+           
             return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
         } catch (\Exception $e) {
-            \Log::error('Processing Error:', ['message' => $e->getMessage()]);
+           
             return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
         }
     }
