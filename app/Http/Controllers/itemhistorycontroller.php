@@ -61,6 +61,8 @@ class itemhistorycontroller extends Controller
          
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
+logger('OpenAI API Key: ' . env('OPENAI_API_KEY'));
+
 $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
     'model' => 'gpt-4',
     'messages' => [
