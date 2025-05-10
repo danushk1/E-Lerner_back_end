@@ -101,10 +101,16 @@ class itemhistorycontroller extends Controller
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
             foreach ($filters as $filter) {
-                $column = $filter['column'];
-                $operator = $filter['operator'];
-                $value = $filter['value'];
+                  $column = match ($filter['column']) {
+        'branch_id' => 'item_historys.branch_id',
+        'item_id' => 'item_historys.item_id',
+        'branch_name' => 'branches.branch_name',
+        'item_name' => 'items.item_name',
+        default => "item_historys.{$filter['column']}",
+    };
 
+    $operator = $filter['operator'];
+    $value = $filter['value'];
                 if ($operator === 'between' && is_array($value) && count($value) === 2) {
                     $queryBuilder->whereBetween($column, $value);
                 } else {
