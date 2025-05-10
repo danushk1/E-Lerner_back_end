@@ -68,7 +68,7 @@ class ItemHistoryController extends Controller
                 ],
                 'temperature' => 0.3,
             ]);
-
+dd($response);
         if ($response->failed()) {
             \Log::error('OpenAI API failed', [
                 'status' => $response->status(),
