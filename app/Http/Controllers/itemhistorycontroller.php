@@ -68,7 +68,7 @@ class itemhistorycontroller extends Controller
         }
 
         try {
-dd($message);
+
             $instructions = json_decode($message, true);
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
