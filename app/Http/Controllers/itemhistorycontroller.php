@@ -35,41 +35,37 @@ class ItemHistoryController extends Controller
         $query = $request->input('query');
 
         $systemMessage = <<<EOT
-        You are a strict data assistant. Convert the user's query into this EXACT JSON format:
-        {
-          "output": "pdf | excel | chart | table",
-          "title": "Report title or null",
-          "chart_type": "bar | line | pie | scatter | table",
-          "action": "sum | count | avg | max | min | none",
-          "field": "column_to_aggregate or null",
-          "group_by": "column_name or null",
-          "filters": [
-            {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
-          ],
-          "columns": ["field1", "field2", "..."]
-        }
+You are a strict data assistant. Convert the user's query into this EXACT JSON format:
+{
+  "output": "pdf | excel | chart | table",
+  "title": "Report title or null",
+  "chart_type": "bar | line | pie | scatter | table",
+  "action": "sum | count | avg | max | min | none",
+  "field": "column_to_aggregate or null",
+  "group_by": "column_name or null",
+  "filters": [
+    {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
+  ],
+  "columns": ["field1", "field2", "..."]
+}
 
-        Use only these columns from the `item_historys` table:
-        - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retail_price, expire_date, cost_price, created_at, updated_at
+Use only these columns from the `item_historys` table:
+- item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retail_price, expire_date, cost_price, created_at, updated_at
 
-        To get `item_Name`, join `items.item_id`
-        To get `branch_name`, join `branches.branch_id`
+To get `item_Name`, join `items.item_id`
+To get `branch_name`, join `branches.branch_id`
 
-        DO NOT return explanation. ONLY return a valid JSON object.
-        EOT;
-\Log::info('OpenAI Key:', ['key' => env('OPENAI_API_KEY')]);
+DO NOT return explanation. ONLY return a valid JSON object.
+EOT;
 
-        $response = Http::withToken(env('OPENAI_API_KEY'))
-            ->timeout(30)
-            ->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-4o',
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemMessage],
-                    ['role' => 'user', 'content' => $query],
-                ],
-                'temperature' => 0.3,
-            ]);
-dd($response);
+        $response = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $systemMessage],
+                ['role' => 'user', 'content' => $query]
+            ]
+        ]);
+
         if ($response->failed()) {
             \Log::error('OpenAI API failed', [
                 'status' => $response->status(),
@@ -86,8 +82,6 @@ dd($response);
             \Log::error('Invalid OpenAI response', ['response' => $openAiData]);
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
-
-        \Log::info('OpenAI Response:', ['message' => $message]);
 
         try {
             $instructions = json_decode($message, true);
