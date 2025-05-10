@@ -1,25 +1,24 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\Facade\PDF;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\GenericExport;
+use Illuminate\Support\Arr;
 
 class itemhistorycontroller extends Controller
 {
-   public function generate(Request $request)
+    public function generate(Request $request)
     {
         $request->validate([
             'query' => 'required|string|max:1000',
         ]);
 
         $query = $request->input('query');
-      
 
         $systemMessage = <<<EOT
         You are a strict data assistant. Convert the user's query into this EXACT JSON format:
@@ -58,7 +57,6 @@ class itemhistorycontroller extends Controller
             ]);
 
         if ($openAiResponse->failed()) {
-         
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
 
@@ -66,7 +64,6 @@ class itemhistorycontroller extends Controller
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
-          
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
@@ -75,7 +72,6 @@ class itemhistorycontroller extends Controller
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
             }
-          
 
             $outputType = $instructions['output'] ?? 'table';
             $chartType = $instructions['chart_type'] ?? 'table';
@@ -125,26 +121,24 @@ class itemhistorycontroller extends Controller
                 $results = $queryBuilder->get();
 
                 if ($results->isEmpty()) {
-                   
                     return response()->json(['error' => 'No data found for the requested report'], 404);
                 }
 
                 if ($outputType === 'pdf') {
-                    $pdf = Pdf::loadView('exports.chart-pdf', [
+                    $pdf = PDF::loadView('exports.chart-pdf', [
                         'data' => $results,
                         'title' => $reportTitle,
-                        'columns' => array_map(fn($col) => last(explode(' as ', $col))[0], $columns),
+                        'columns' => array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns),
                     ]);
-                    return response()->streamDownload(
-                        fn() => $pdf->output(),
-                        Str::slug($reportTitle) . '.pdf',
-                        ['Content-Type' => 'application/pdf']
-                    );
+
+                    return response($pdf->output(), 200)
+                        ->header('Content-Type', 'application/pdf')
+                        ->header('Content-Disposition', 'attachment; filename="' . Str::slug($reportTitle) . '.pdf"');
                 }
 
                 // if ($outputType === 'excel') {
                 //     return Excel::download(
-                //         new GenericExport($results, $reportTitle, array_map(fn($col) => last(explode(' as ', $col))[0], $columns)),
+                //         new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
                 //         Str::slug($reportTitle) . '.xlsx'
                 //     );
                 // }
@@ -163,8 +157,7 @@ class itemhistorycontroller extends Controller
                 $queryBuilder->groupBy($groupBy);
             }
 
-            DB::enableQueryLog();
-            $results = $queryBuilder->get();  
+            $results = $queryBuilder->get();
 
             $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
                 $data = [
@@ -174,7 +167,7 @@ class itemhistorycontroller extends Controller
 
                 if ($outputType === 'table') {
                     foreach ($columns as $col) {
-                        $colName = last(explode(' as ', $col))[0];
+                        $colName = Arr::last(explode(' as ', $col));
                         $data[$colName] = $row->$colName ?? '';
                     }
                 }
@@ -200,10 +193,8 @@ class itemhistorycontroller extends Controller
                 ],
             ]);
         } catch (\JsonException $e) {
-           
             return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
         } catch (\Exception $e) {
-           
             return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
         }
     }
