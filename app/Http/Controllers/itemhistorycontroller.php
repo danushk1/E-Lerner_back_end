@@ -57,6 +57,7 @@ class ItemHistoryController extends Controller
 
         DO NOT return explanation. ONLY return a valid JSON object.
         EOT;
+\Log::info('OpenAI Key:', ['key' => env('OPENAI_API_KEY')]);
 
         $response = Http::withToken(env('OPENAI_API_KEY'))
             ->timeout(30)
