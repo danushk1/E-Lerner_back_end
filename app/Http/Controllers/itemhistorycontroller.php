@@ -40,7 +40,7 @@ class itemhistorycontroller extends Controller
         Use only these columns from the `item_historys` table:
         - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retail_price, expire_date, cost_price, created_at, updated_at
         
-        To get `item_Name`, join `items.item_id`
+        To get `item_Name`, join `items.item_id `
         To get `branch_name`, join `branches.branch_id`
         
         DO NOT return explanation. ONLY return a valid JSON object.
@@ -115,7 +115,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             if (empty($columns)) {
                 $columns = [
                     'item_historys.transaction_date as transaction_date',
-                    'items.item_Name as item_Name',
+                    'items.item_Name as item_name',  
                     'item_historys.quantity as quantity',
                     'branches.branch_name as branch_name',
                     'item_historys.external_number as external_number',
@@ -123,7 +123,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             } else {
                 $columns = array_map(function ($col) {
                     return match ($col) {
-                        'item_Name' => 'items.item_Name as item_Name',
+                        'item_Name' => 'items.item_Name as item_name',
                         'branch_name' => 'branches.branch_name as branch_name',
                         default => "item_historys.$col as $col",
                     };
