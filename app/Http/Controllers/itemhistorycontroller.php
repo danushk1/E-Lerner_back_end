@@ -115,7 +115,7 @@ class itemhistorycontroller extends Controller
                     };
                 }, $columns);
             }
-
+dd( $queryBuilder );
             if (in_array($outputType, ['pdf', 'excel'])) {
                 $queryBuilder->select(array_map(fn($col) => str_contains($col, ' as ') ? $col : "$col as " . last(explode('.', $col)), $columns));
                 $results = $queryBuilder->get();
