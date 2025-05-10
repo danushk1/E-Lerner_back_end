@@ -68,6 +68,7 @@ class itemhistorycontroller extends Controller
         }
 
         try {
+dd($message);
             $instructions = json_decode($message, true);
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
@@ -85,7 +86,7 @@ class itemhistorycontroller extends Controller
             $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
-dd($queryBuilder);
+
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
