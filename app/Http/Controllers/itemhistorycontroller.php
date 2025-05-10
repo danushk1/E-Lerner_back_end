@@ -57,9 +57,7 @@ class itemhistorycontroller extends Controller
             ]);
 
         if ($openAiResponse->failed()) {
-          
-            
-
+            \Log::error('OpenAI API failed', ['status' => $openAiResponse->status(), 'body' => $openAiResponse->body()]);
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
 
@@ -67,13 +65,11 @@ class itemhistorycontroller extends Controller
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
-       
-            
+            \Log::error('Invalid OpenAI response', ['response' => $openAiData]);
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
-
-        
+        \Log::info('OpenAI Response:', [$message]);
 
         try {
             $instructions = json_decode($message, true);
@@ -116,8 +112,7 @@ class itemhistorycontroller extends Controller
                 }, $columns);
             }
 
-         
-            
+            \Log::info('Processed Columns:', $columns);
 
             $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
@@ -135,24 +130,22 @@ class itemhistorycontroller extends Controller
                 }
             }
 
-
-            
+            \Log::info('Filters Applied:', $filters);
 
             if (in_array($outputType, ['pdf', 'excel'])) {
                 $queryBuilder->select(array_map(fn($col) => str_contains($col, ' as ') ? $col : "$col as " . Arr::last(explode('.', $col)), $columns));
                 DB::enableQueryLog();
                 $results = $queryBuilder->get();
-              
-                
+                \Log::info('SQL Query:', DB::getQueryLog());
+                \Log::info('Query Results Count:', ['count' => $results->count()]);
 
                 if ($results->isEmpty()) {
-            
-                    
+                    \Log::warning('No data found for query', ['filters' => $filters, 'columns' => $columns]);
                     return response()->json(['error' => 'No data found for the requested report'], 404);
                 }
 
                 if ($outputType === 'pdf') {
-               
+                    \Log::info('Generating PDF with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
                     $pdf = PDF::loadView('exports.chart-pdf', [
                         'data' => $results,
                         'title' => $reportTitle,
@@ -164,17 +157,18 @@ class itemhistorycontroller extends Controller
                         ->header('Content-Disposition', 'attachment; filename="' . Str::slug($reportTitle) . '.pdf"');
                 }
 
-                // if ($outputType === 'excel') {
-                //     \Log::info('Generating Excel with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
-                //     return Excel::download(
-                //         new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
-                //         Str::slug($reportTitle) . '.xlsx'
-                //     );
-                // }
+                if ($outputType === 'excel') {
+                    \Log::info('Generating Excel with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
+                    return Excel::download(
+                        new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
+                        Str::slug($reportTitle) . '.xlsx'
+                    );
+                }
             }
 
             if ($action !== 'none' && $field) {
-                $select = ($groupBy ? "$groupBy, " : "") . "$action($field) as value";
+                $select = ($groupBy ?atiche
+                "$groupBy, " : "") . "$action($field) as value";
                 $queryBuilder->selectRaw($select);
             } elseif ($field) {
                 $queryBuilder->selectRaw("$field as value");
@@ -188,7 +182,8 @@ class itemhistorycontroller extends Controller
 
             DB::enableQueryLog();
             $results = $queryBuilder->get();
-           
+            \Log::info('SQL Query:', DB::getQueryLog());
+            \Log::info('Query Results Count:', ['count' => $results->count()]);
 
             $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
                 $data = [
@@ -224,10 +219,13 @@ class itemhistorycontroller extends Controller
                 ],
             ]);
         } catch (\JsonException $e) {
-         
+            \Log::error('JSON Decode Error:', ['error' => $e->getMessage(), 'response' => $message]);
             return response()->json(['error' => 'Invalid JSON from OpenAI', 'details' => $e->getMessage()], 500);
         } catch (\Exception $e) {
-           
+            \Log::error('Report processing failed', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
         }
     }
