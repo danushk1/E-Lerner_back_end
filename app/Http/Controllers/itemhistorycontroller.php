@@ -1,17 +1,31 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Barryvdh\DomPDF\Facade\PDF;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\GenericExport;
-use Illuminate\Support\Arr;
 
-class itemhistorycontroller extends Controller
+class ItemHistoryController extends Controller
 {
+    private const DEFAULT_COLUMNS = [
+        'item_historys.transaction_date as transaction_date',
+        'items.item_Name as item_Name',
+        'item_historys.quantity as quantity',
+        'branches.branch_name as branch_name',
+        'item_historys.external_number as external_number',
+    ];
+
+    private const VALID_COLUMNS = [
+        'item_history_id', 'external_number', 'branch_id', 'location_id', 'document_number',
+        'transaction_date', 'description', 'item_id', 'quantity', 'free_quantity',
+        'batch_number', 'whole_sale_price', 'retail_price', 'expire_date', 'cost_price',
+        'created_at', 'updated_at', 'item_Name', 'branch_name'
+    ];
+
     public function generate(Request $request)
     {
         $request->validate([
@@ -22,7 +36,6 @@ class itemhistorycontroller extends Controller
 
         $systemMessage = <<<EOT
         You are a strict data assistant. Convert the user's query into this EXACT JSON format:
-        
         {
           "output": "pdf | excel | chart | table",
           "title": "Report title or null",
@@ -35,17 +48,17 @@ class itemhistorycontroller extends Controller
           ],
           "columns": ["field1", "field2", "..."]
         }
-        
+
         Use only these columns from the `item_historys` table:
         - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retail_price, expire_date, cost_price, created_at, updated_at
-        
+
         To get `item_Name`, join `items.item_id`
         To get `branch_name`, join `branches.branch_id`
-        
+
         DO NOT return explanation. ONLY return a valid JSON object.
         EOT;
 
-        $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))
+        $response = Http::withToken(env('OPENAI_API_KEY'))
             ->timeout(30)
             ->post('https://api.openai.com/v1/chat/completions', [
                 'model' => 'gpt-4o',
@@ -56,12 +69,16 @@ class itemhistorycontroller extends Controller
                 'temperature' => 0.3,
             ]);
 
-        if ($openAiResponse->failed()) {
-            \Log::error('OpenAI API failed', ['status' => $openAiResponse->status(), 'body' => $openAiResponse->body()]);
+        if ($response->failed()) {
+            \Log::error('OpenAI API failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+                'query' => $query
+            ]);
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
 
-        $openAiData = $openAiResponse->json();
+        $openAiData = $response->json();
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
@@ -69,12 +86,12 @@ class itemhistorycontroller extends Controller
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
-        \Log::info('OpenAI Response:', [$message]);
+        \Log::info('OpenAI Response:', ['message' => $message]);
 
         try {
             $instructions = json_decode($message, true);
             if (!is_array($instructions)) {
-                throw new \Exception('Invalid JSON from OpenAI: Response is not an array');
+                throw new \Exception('Invalid JSON from OpenAI: Not an array');
             }
 
             $outputType = $instructions['output'] ?? 'table';
@@ -86,22 +103,10 @@ class itemhistorycontroller extends Controller
             $columns = $instructions['columns'] ?? [];
             $reportTitle = $instructions['title'] ?? 'Stock Balance Report';
 
-            $validColumns = [
-                'item_history_id', 'external_number', 'branch_id', 'location_id', 'document_number',
-                'transaction_date', 'description', 'item_id', 'quantity', 'free_quantity',
-                'batch_number', 'whole_sale_price', 'retail_price', 'expire_date', 'cost_price',
-                'created_at', 'updated_at', 'item_Name', 'branch_name'
-            ];
-
-            $columns = array_filter($columns, fn($col) => in_array($col, $validColumns));
+            // Validate and prepare columns
+            $columns = array_filter($columns, fn($col) => in_array($col, self::VALID_COLUMNS));
             if (empty($columns)) {
-                $columns = [
-                    'item_historys.transaction_date as transaction_date',
-                    'items.item_Name as item_Name',
-                    'item_historys.quantity as quantity',
-                    'branches.branch_name as branch_name',
-                    'item_historys.external_number as external_number',
-                ];
+                $columns = self::DEFAULT_COLUMNS;
             } else {
                 $columns = array_map(function ($col) {
                     return match ($col) {
@@ -112,121 +117,97 @@ class itemhistorycontroller extends Controller
                 }, $columns);
             }
 
-            \Log::info('Processed Columns:', $columns);
-
             $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
-                ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
+                ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id')
+                ->select($columns);
 
+            // Apply filters
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
 
+                if (!in_array($column, self::VALID_COLUMNS)) {
+                    throw new \Exception("Invalid filter column: $column");
+                }
+
+                $col = match ($column) {
+                    'item_Name' => 'items.item_Name',
+                    'branch_name' => 'branches.branch_name',
+                    default => "item_historys.$column"
+                };
+
                 if ($operator === 'between' && is_array($value) && count($value) === 2) {
-                    $queryBuilder->whereBetween($column, $value);
+                    $queryBuilder->whereBetween($col, $value);
                 } else {
-                    $queryBuilder->where($column, $operator, $value);
+                    $queryBuilder->where($col, $operator, $value);
                 }
             }
 
-            \Log::info('Filters Applied:', $filters);
+            // Apply groupBy
+            if ($groupBy && in_array($groupBy, self::VALID_COLUMNS)) {
+                $groupCol = match ($groupBy) {
+                    'item_Name' => 'items.item_Name',
+                    'branch_name' => 'branches.branch_name',
+                    default => "item_historys.$groupBy"
+                };
+                $queryBuilder->groupBy(DB::raw($groupCol));
+            }
 
-            if (in_array($outputType, ['pdf', 'excel'])) {
-                $queryBuilder->select(array_map(fn($col) => str_contains($col, ' as ') ? $col : "$col as " . Arr::last(explode('.', $col)), $columns));
-                DB::enableQueryLog();
-                $results = $queryBuilder->get();
-                \Log::info('SQL Query:', DB::getQueryLog());
-                \Log::info('Query Results Count:', ['count' => $results->count()]);
+            // Apply aggregation
+            if ($action !== 'none' && $field && in_array($field, self::VALID_COLUMNS)) {
+                $fieldCol = match ($field) {
+                    'item_Name' => 'items.item_Name',
+                    'branch_name' => 'branches.branch_name',
+                    default => "item_historys.$field"
+                };
 
-                if ($results->isEmpty()) {
-                    \Log::warning('No data found for query', ['filters' => $filters, 'columns' => $columns]);
-                    return response()->json(['error' => 'No data found for the requested report'], 404);
+                $queryBuilder->addSelect(DB::raw(strtoupper($action) . "($fieldCol) as value"));
+
+                if ($groupBy) {
+                    $groupCol = match ($groupBy) {
+                        'item_Name' => 'items.item_Name',
+                        'branch_name' => 'branches.branch_name',
+                        default => "item_historys.$groupBy"
+                    };
+                    $queryBuilder->addSelect(DB::raw("$groupCol as name"));
                 }
-
-                if ($outputType === 'pdf') {
-                    \Log::info('Generating PDF with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
-                    $pdf = PDF::loadView('exports.chart-pdf', [
-                        'data' => $results,
-                        'title' => $reportTitle,
-                        'columns' => array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns),
-                    ]);
-
-                    return response($pdf->output(), 200)
-                        ->header('Content-Type', 'application/pdf')
-                        ->header('Content-Disposition', 'attachment; filename="' . Str::slug($reportTitle) . '.pdf"');
-                }
-
-                // if ($outputType === 'excel') {
-                //     \Log::info('Generating Excel with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
-                //     return Excel::download(
-                //         new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
-                //         Str::slug($reportTitle) . '.xlsx'
-                //     );
-                // }
             }
 
-            if ($action !== 'none' && $field) {
-                $select = ($groupBy ? 
-                "$groupBy, " : "") . "$action($field) as value";
-                $queryBuilder->selectRaw($select);
-            } elseif ($field) {
-                $queryBuilder->selectRaw("$field as value");
-            } else {
-                $queryBuilder->select($columns);
-            }
+            \Log::info('Generated SQL Query', [
+                'query' => $queryBuilder->toSql(),
+                'bindings' => $queryBuilder->getBindings()
+            ]);
 
-            if ($groupBy) {
-                $queryBuilder->groupBy($groupBy);
-            }
+            $data = $queryBuilder->get()->map(fn($row) => (array) $row)->toArray();
 
-            DB::enableQueryLog();
-            $results = $queryBuilder->get();
-            \Log::info('SQL Query:', DB::getQueryLog());
-            \Log::info('Query Results Count:', ['count' => $results->count()]);
-
-            $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
-                $data = [
-                    'name' => $groupBy ? $row->$groupBy : ($row->transaction_date ?? ''),
-                    'value' => $row->value ?? ($row->quantity ?? 0),
-                ];
-
-                if ($outputType === 'table') {
-                    foreach ($columns as $col) {
-                        $colName = Arr::last(explode(' as ', $col));
-                        $data[$colName] = $row->$colName ?? '';
-                    }
-                }
-
-                return $data;
-            })->toArray();
-
-            if ($chartType === 'pie') {
-                $colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#ff4d4f'];
-                $formattedData = array_map(function ($item, $index) use ($colors) {
-                    $item['fill'] = $colors[$index % count($colors)];
-                    return $item;
-                }, $formattedData, array_keys($formattedData));
-            }
-
-            return response()->json([
-                'charts' => [
-                    [
+            // Output handling
+            if ($outputType === 'chart') {
+                return response()->json([
+                    'charts' => [[
                         'type' => $chartType,
-                        'data' => $formattedData,
-                        'title' => $reportTitle,
-                    ],
-                ],
-            ]);
-        } catch (\JsonException $e) {
-            \Log::error('JSON Decode Error:', ['error' => $e->getMessage(), 'response' => $message]);
-            return response()->json(['error' => 'Invalid JSON from OpenAI', 'details' => $e->getMessage()], 500);
+                        'data' => $data,
+                        'title' => $reportTitle
+                    ]]
+                ]);
+            } elseif ($outputType === 'pdf') {
+                $pdf = PDF::loadView('reports.generic', ['data' => $data, 'title' => $reportTitle]);
+                return $pdf->download('report.pdf');
+            } elseif ($outputType === 'excel') {
+                return Excel::download(new GenericExport($data), 'report.xlsx');
+            } else {
+                return response()->json(['data' => $data, 'title' => $reportTitle]);
+            }
+
         } catch (\Exception $e) {
-            \Log::error('Report processing failed', [
-                'message' => $e->getMessage(),
+            \Log::error('Error processing report', [
+                'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+                'response' => $message,
+                'query' => $query
             ]);
-            return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
+            return response()->json(['error' => 'Failed to process report: ' . $e->getMessage()], 500);
         }
     }
 }
