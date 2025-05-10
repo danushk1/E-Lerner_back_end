@@ -12,14 +12,14 @@ use App\Exports\GenericExport;
 
 class itemhistorycontroller extends Controller
 {
-   public function generate(Request $request)
+    public function generate(Request $request)
     {
         $request->validate([
             'query' => 'required|string|max:1000',
         ]);
 
         $query = $request->input('query');
-      
+
 
         $systemMessage = <<<EOT
         You are a strict data assistant. Convert the user's query into this EXACT JSON format:
@@ -58,25 +58,25 @@ class itemhistorycontroller extends Controller
             ]);
 
         if ($openAiResponse->failed()) {
-         
+
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
-logger('OpenAI API Key: ' . env('OPENAI_API_KEY'));
 
-$openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
-    'model' => 'gpt-4',
-    'messages' => [
-        ['role' => 'system', 'content' => $systemMessage],
-        ['role' => 'user', 'content' => $query],
-    ],
-    
-]);
+
+        $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
+            'model' => 'gpt-4',
+            'messages' => [
+                ['role' => 'system', 'content' => $systemMessage],
+                ['role' => 'user', 'content' => $query],
+            ],
+
+        ]);
 
         $openAiData = $openAiResponse->json();
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
-          
+
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
@@ -85,7 +85,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
             }
-          
+
 
             $outputType = $instructions['output'] ?? 'table';
             $chartType = $instructions['chart_type'] ?? 'table';
@@ -115,7 +115,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             if (empty($columns)) {
                 $columns = [
                     'item_historys.transaction_date as transaction_date',
-                    'items.item_Name as item_name',  
+                    'items.item_Name as item_name',
                     'item_historys.quantity as quantity',
                     'branches.branch_name as branch_name',
                     'item_historys.external_number as external_number',
@@ -135,7 +135,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
                 $results = $queryBuilder->get();
 
                 if ($results->isEmpty()) {
-                   
+
                     return response()->json(['error' => 'No data found for the requested report'], 404);
                 }
 
@@ -161,8 +161,11 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             }
 
             if ($action !== 'none' && $field) {
-                $select = ($groupBy ? "$groupBy, " : "") . "$action($field) as value";
-                $queryBuilder->selectRaw($select);
+                if ($groupBy) {
+                    $queryBuilder->selectRaw("$groupBy, $action($field) as value")->groupBy($groupBy);
+                } else {
+                    $queryBuilder->selectRaw("$action($field) as value");
+                }
             } elseif ($field) {
                 $queryBuilder->selectRaw("$field as value");
             } else {
@@ -174,7 +177,7 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
             }
 
             DB::enableQueryLog();
-            $results = $queryBuilder->get();  
+            $results = $queryBuilder->get();
 
             $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
                 $data = [
@@ -210,10 +213,10 @@ $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.open
                 ],
             ]);
         } catch (\JsonException $e) {
-           
+
             return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
         } catch (\Exception $e) {
-           
+
             return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
         }
     }
