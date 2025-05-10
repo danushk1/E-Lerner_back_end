@@ -38,5 +38,5 @@ Route::post('/chat', [OpenAIController::class, 'chat']);
 Route::post('/embeddings/subjects', [EmbeddingController::class, 'createSubjectEmbeddings']);
 Route::get('/embedding/subject', [SubjectEmbeddingController::class, 'generate']);
 Route::post('/search/subjects', [SubjectSearchController::class, 'search']);
-//Route::post('/chart/generate', [ChartAssistantController::class, 'generate']);
-Route::post('/chart/generate', [itemhistorycontroller::class, 'generate']);
+Route::post('/chart/generate', [ChartAssistantController::class, 'generate']);
+//Route::post('/chart/generate', [itemhistorycontroller::class, 'generate']);
