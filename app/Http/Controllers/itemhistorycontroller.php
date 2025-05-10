@@ -55,7 +55,7 @@ class itemhistorycontroller extends Controller
                 ],
                 'temperature' => 0.3,
             ]);
-
+dd($openAiResponse);
         if ($openAiResponse->failed()) {
             return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
         }
