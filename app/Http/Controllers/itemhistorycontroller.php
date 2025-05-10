@@ -38,7 +38,7 @@ class itemhistorycontroller extends Controller
         }
         
         Use only these columns from the `item_historys` table:
-        - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retail_price, expire_date, cost_price, created_at, updated_at
+        - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retial_price, expire_date, cost_price, created_at, updated_at
         
         To get `item_Name`, join `items.item_id `
         To get `branch_name`, join `branches.branch_id`
