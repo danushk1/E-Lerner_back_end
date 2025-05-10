@@ -66,20 +66,13 @@ EOT;
             ]
         ]);
 
-        if ($response->failed()) {
-            \Log::error('OpenAI API failed', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-                'query' => $query
-            ]);
-            return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
-        }
+       
 
         $openAiData = $response->json();
         $message = $openAiData['choices'][0]['message']['content'] ?? null;
 
         if (!$message) {
-            \Log::error('Invalid OpenAI response', ['response' => $openAiData]);
+           
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
@@ -139,7 +132,7 @@ EOT;
                     $queryBuilder->where($col, $operator, $value);
                 }
             }
-
+dd($queryBuilder);
             // Apply groupBy
             if ($groupBy && in_array($groupBy, self::VALID_COLUMNS)) {
                 $groupCol = match ($groupBy) {
