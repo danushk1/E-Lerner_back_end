@@ -34,7 +34,8 @@ class itemhistorycontroller extends Controller
           "filters": [
             {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
           ],
-          "columns": ["field1", "field2", "..."]
+           "columns": ["column1", "column2", "column3"],
+            "aggregation": {"action": "sum | avg | count", "field": "field_name"}
         }
         
         Use only these columns from the `item_historys` table:
@@ -80,150 +81,74 @@ class itemhistorycontroller extends Controller
             return response()->json(['error' => 'Invalid OpenAI response'], 500);
         }
 
-        try {
+     try {
+            // Decode the structured instruction returned by OpenAI
             $instructions = json_decode($message, true);
             if (!is_array($instructions)) {
                 throw new \Exception('Invalid JSON from OpenAI');
             }
 
-
             $outputType = $instructions['output'] ?? 'table';
-            $chartType = $instructions['chart_type'] ?? 'table';
-            $action = $instructions['action'] ?? 'none';
-            $field = $instructions['field'] ?? null;
-            $groupBy = $instructions['group_by'] ?? null;
+            $chartType = $instructions['chart_type'] ?? 'pie';
             $filters = $instructions['filters'] ?? [];
             $columns = $instructions['columns'] ?? [];
-            $reportTitle = $instructions['title'] ?? 'Stock Balance Report';
+            $aggregation = $instructions['aggregation'] ?? null; // Now this will be set correctly
 
+            // Build the query based on the OpenAI instruction
             $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
+            // Apply the filters dynamically based on what OpenAI returns
             foreach ($filters as $filter) {
-                $column = match ($filter['column']) {
-                    'branch_id' => 'item_historys.branch_id',
-                    'item_id' => 'item_historys.item_id',
-                    'branch_name' => 'branches.branch_name',
-                    'item_Name' => 'items.item_Name',
-                    default => "item_historys.{$filter['column']}",
-                };
-
+                $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
-                if ($operator === 'between' && is_array($value) && count($value) === 2) {
-                    $queryBuilder->whereBetween($column, $value);
-                } else {
-                    $queryBuilder->where($column, $operator, $value);
-                }
+                $queryBuilder->where($column, $operator, $value);
             }
 
+            // Apply aggregation if specified (e.g., sum of quantity)
+            if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
+                $queryBuilder->selectRaw("$aggregation[action]($aggregation[field]) as value");
+            }
+
+            // Apply column selection for table output
             if (empty($columns)) {
-                $columns = [
-                    'item_historys.transaction_date as transaction_date',
-                    'items.item_Name as item_Name',
-                    'item_historys.quantity as quantity',
-                    'branches.branch_name as branch_name',
-                    'item_historys.external_number as external_number',
-                ];
-            } else {
-                $columns = array_map(function ($col) {
-                    return match ($col) {
-                        'item_Name' => 'items.item_Name as item_Name',
-                        'branch_name' => 'branches.branch_name as branch_name',
-                        default => "item_historys.$col as $col",
-                    };
-                }, $columns);
+                $columns = ['item_historys.transaction_date', 'items.item_Name', 'branches.branch_name', 'item_historys.quantity'];
             }
 
-            if (in_array($outputType, ['pdf', 'excel'])) {
-                $queryBuilder->select(array_map(fn($col) => str_contains($col, ' as ') ? $col : "$col as " . last(explode('.', $col)), $columns));
-                $results = $queryBuilder->get();
-
-                if ($results->isEmpty()) {
-
-                    return response()->json(['error' => 'No data found for the requested report'], 404);
-                }
-
-                if ($outputType === 'pdf') {
-                    $pdf = Pdf::loadView('exports.chart-pdf', [
-                        'data' => $results,
-                        'title' => $reportTitle,
-                        'columns' => array_map(fn($col) => last(explode(' as ', $col))[0], $columns),
-                    ]);
-                    return response()->streamDownload(
-                        fn() => $pdf->output(),
-                        Str::slug($reportTitle) . '.pdf',
-                        ['Content-Type' => 'application/pdf']
-                    );
-                }
-
-                // if ($outputType === 'excel') {
-                //     return Excel::download(
-                //         new GenericExport($results, $reportTitle, array_map(fn($col) => last(explode(' as ', $col))[0], $columns)),
-                //         Str::slug($reportTitle) . '.xlsx'
-                //     );
-                // }
-            }
-
-            if ($action !== 'none' && $field) {
-                if ($groupBy) {
-                    $queryBuilder->selectRaw("$groupBy, $action($field) as value")->groupBy($groupBy);
-                } else {
-                    $queryBuilder->selectRaw("$action($field) as value");
-                }
-            } elseif ($field) {
-                $queryBuilder->selectRaw("$field as value");
-            } else {
-                $queryBuilder->select($columns);
-            }
-
-            if ($groupBy) {
-                $queryBuilder->groupBy($groupBy);
-            }
-
-            DB::enableQueryLog();
+            $queryBuilder->select($columns);
             $results = $queryBuilder->get();
 
-            $formattedData = $results->map(function ($row) use ($groupBy, $columns, $outputType) {
-                $data = [
-                    'name' => $groupBy ? $row->$groupBy : ($row->transaction_date ?? ''),
-                    'value' => $row->value ?? ($row->quantity ?? 0),
-                ];
-
-                if ($outputType === 'table') {
-                    foreach ($columns as $col) {
-                        $colName = last(explode(' as ', $col))[0];
-                        $data[$colName] = $row->$colName ?? '';
-                    }
+            // Format results into the desired structure for output
+            $formattedData = $results->map(function ($row) use ($columns) {
+                $data = [];
+                foreach ($columns as $column) {
+                    $data[last(explode('.', $column))] = $row->$column ?? null;
                 }
-
                 return $data;
-            })->toArray();
+            });
 
-            if ($chartType === 'pie') {
-                $colors = ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#ff4d4f'];
-                $formattedData = array_map(function ($item, $index) use ($colors) {
-                    $item['fill'] = $colors[$index % count($colors)];
-                    return $item;
-                }, $formattedData, array_keys($formattedData));
+            // Return the formatted data based on the output type
+            if ($outputType === 'chart') {
+                return response()->json([
+                    'charts' => [
+                        [
+                            'type' => $chartType,
+                            'data' => $formattedData,
+                        ]
+                    ]
+                ]);
+            } elseif ($outputType === 'table') {
+                return response()->json([
+                    'table' => $formattedData,
+                ]);
             }
 
-            return response()->json([
-                'charts' => [
-                    [
-                        'type' => $chartType,
-                        'data' => $formattedData,
-                        'title' => $reportTitle,
-                    ],
-                ],
-            ]);
         } catch (\JsonException $e) {
-
             return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
         } catch (\Exception $e) {
-
-            return response()->json(['error' => 'Failed to process report', 'details' => $e->getMessage()], 500);
+            return response()->json(['error' => 'Failed to process request', 'details' => $e->getMessage()], 500);
         }
     }
 }
