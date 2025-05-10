@@ -157,17 +157,17 @@ class itemhistorycontroller extends Controller
                         ->header('Content-Disposition', 'attachment; filename="' . Str::slug($reportTitle) . '.pdf"');
                 }
 
-                if ($outputType === 'excel') {
-                    \Log::info('Generating Excel with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
-                    return Excel::download(
-                        new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
-                        Str::slug($reportTitle) . '.xlsx'
-                    );
-                }
+                // if ($outputType === 'excel') {
+                //     \Log::info('Generating Excel with columns:', array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns));
+                //     return Excel::download(
+                //         new GenericExport($results, $reportTitle, array_map(fn($col) => Arr::last(explode(' as ', $col)), $columns)),
+                //         Str::slug($reportTitle) . '.xlsx'
+                //     );
+                // }
             }
 
             if ($action !== 'none' && $field) {
-                $select = ($groupBy ?atiche
+                $select = ($groupBy ? 
                 "$groupBy, " : "") . "$action($field) as value";
                 $queryBuilder->selectRaw($select);
             } elseif ($field) {
