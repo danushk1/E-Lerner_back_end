@@ -117,7 +117,7 @@ foreach ($userColumns as $col) {
                 $column = match (true) {
                     in_array($filter['column'], ['item_code', 'item_name']) => "items." . $filter['column'],
                     $filter['column'] === 'branch_name' => "branches.branch_name",
-                    default => "item_historys." . $filter['column']
+                    default =>  $filter['column']
                 };
 
                 if ($filter['operator'] === 'between' && is_array($filter['value'])) {
