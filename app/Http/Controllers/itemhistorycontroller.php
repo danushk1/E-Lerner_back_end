@@ -103,9 +103,9 @@ EOT;
                 $value = $filter['value'];
 
                 if ($operator === 'between') {
-                    $sql .= " WHERE item_historys.$column BETWEEN '$value[0]' AND '$value[1]'";
+                    $sql .= " WHERE $column BETWEEN '$value[0]' AND '$value[1]'";
                 } else {
-                    $sql .= " WHERE item_historys.$column $operator '$value'";
+                    $sql .= " WHERE $column $operator '$value'";
                 }
             }
         }
