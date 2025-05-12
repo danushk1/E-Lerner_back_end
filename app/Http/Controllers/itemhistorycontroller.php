@@ -101,7 +101,7 @@ EOT;
 
 
         // Apply filters
-        $filterCount = 0;
+         $filterCount = 0;
         foreach ($json['filters'] ?? [] as $filter) {
             $column = $filter['column'];
             $operator = strtolower($filter['operator']);
@@ -129,22 +129,10 @@ EOT;
 
             $filterCount++;
         }
-
         // GROUP BY
-       if (!empty($json['columns'])) {
-            $groupByCols = [];
-            foreach ($json['columns'] as $col) {
-                if (in_array($col, ['item_code', 'item_name'])) {
-                    $groupByCols[] = "items.$col";
-                } elseif (in_array($col, ['branch_name', 'address'])) {
-                    $groupByCols[] = "branches.$col";
-                } else {
-                    $groupByCols[] = "item_historys.$col";
-                }
-            }
+        if (!empty($groupByCols)) {
             $sql .= " GROUP BY " . implode(', ', $groupByCols);
         }
-
 dd($sql);
         // Apply grouping if necessary
        
