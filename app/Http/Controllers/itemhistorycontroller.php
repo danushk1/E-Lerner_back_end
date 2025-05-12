@@ -78,7 +78,7 @@ EOT;
             $groupBy = $instructions['group_by'] ?? null;
 
             // STEP 3: Build Query
-           $queryBuilder = DB::table('item_historys')
+$queryBuilder = DB::table('item_historys')
     ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
     ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
@@ -88,14 +88,18 @@ if ($aggregation && isset($aggregation['action']) && isset($aggregation['field']
     $aggFieldFull = "item_historys.$aggField";  // Ensure field comes from item_historys table
 
     // Fix for ambiguity: Explicitly use item_historys.item_id in the group by and select statements
-    $queryBuilder->selectRaw("$aggAction($aggFieldFull) as value, item_historys.item_id as item_id");
+    $queryBuilder->selectRaw("$aggAction($aggFieldFull) as value, item_historys.item_id");
 
     // If group_by is specified, add it properly
     if ($groupBy) {
         $groupByFull = "item_historys.$groupBy";  // Ensure group by is explicitly item_historys
-        $queryBuilder->addSelect($groupByFull)->groupBy($groupByFull);
+        $queryBuilder->groupBy($groupByFull);  // Fix: Ensure we group only by item_historys.item_id
+    } else {
+        // Default to grouping by item_id if no group_by specified
+        $queryBuilder->groupBy('item_historys.item_id');
     }
 }
+
 
             // Filters
           if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
