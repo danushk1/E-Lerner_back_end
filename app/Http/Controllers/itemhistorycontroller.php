@@ -101,7 +101,7 @@ foreach ($filters as $filter) {
     $column = $filter['column'];
     $operator = strtolower($filter['operator']);
     $value = $filter['value'];
-dump($filter);
+//dump($filter);
     // Determine correct table prefix
     if (in_array($column, ['item_code', 'item_name'])) {
         $qualifiedColumn = "items.$column";
@@ -132,7 +132,7 @@ dump($filter);
         }
         // Execute the raw SQL query
         try {
-          // dd($sql);
+           dd($sql);
             $results = DB::select(DB::raw($sql));
 
         } catch (\Exception $e) {
