@@ -108,9 +108,9 @@ EOT;
             $value = $filter['value'];
 
             if ($filterCount === 0) {
-                $sql .= "WHERE ";
+                $sql .= " WHERE ";
             } else {
-                $sql .= "AND ";
+                $sql .= " AND ";
             }
 
             if (in_array($column, ['item_code', 'item_name'])) {
@@ -131,7 +131,7 @@ EOT;
         }
 
         // GROUP BY
-        if (!empty($json['columns'])) {
+       if (!empty($json['columns'])) {
             $groupByCols = [];
             foreach ($json['columns'] as $col) {
                 if (in_array($col, ['item_code', 'item_name'])) {
@@ -142,7 +142,7 @@ EOT;
                     $groupByCols[] = "item_historys.$col";
                 }
             }
-            $sql .= "  GROUP BY " . implode(', ', $groupByCols);
+            $sql .= " GROUP BY " . implode(', ', $groupByCols);
         }
 
 dd($sql);
