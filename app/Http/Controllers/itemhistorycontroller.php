@@ -75,7 +75,7 @@ EOT;
         }
 
         // Decode the structured JSON from OpenAI
-        $json = json_decode($structured, true);
+          $json = json_decode($structured, true);
 
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
@@ -120,7 +120,6 @@ EOT;
         if ($groupBy) {
             $sql .= " GROUP BY item_historys.item_id, items.item_code, items.item_name";
         }
-
         // Execute the raw SQL query
         try {
            dd($sql);
