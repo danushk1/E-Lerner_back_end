@@ -103,7 +103,7 @@ EOT;
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        $filters = $json['filters'] ?? [];
+         $filters = $json['filters'] ?? [];
         if (!empty($filters)) {
             $sql .= " WHERE ";
             $where = [];
@@ -114,10 +114,16 @@ EOT;
                     default => "item_historys." . $filter['column']
                 };
 
-                if ($filter['operator'] === 'between' && is_array($filter['value'])) {
-                    $where[] = "$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
+                if ($filter['operator'] === 'between') {
+                    if (is_array($filter['value']) && count($filter['value']) === 2) {
+                        $start = is_numeric($filter['value'][0]) ? $filter['value'][0] : "'" . $filter['value'][0] . "'";
+                        $end = is_numeric($filter['value'][1]) ? $filter['value'][1] : "'" . $filter['value'][1] . "'";
+                        $where[] = "$column BETWEEN $start AND $end";
+                    } else {
+                        return response()->json(['error' => 'Invalid "between" filter value format.'], 422);
+                    }
                 } else {
-                    $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
+                    $val = is_array($filter['value']) ? json_encode($filter['value']) : (is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'");
                     $where[] = "$column {$filter['operator']} $val";
                 }
             }
