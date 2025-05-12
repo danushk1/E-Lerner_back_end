@@ -1,16 +1,14 @@
 <?php
-
 namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Http;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\GenericExport;
 
-class itemhistorycontroller extends Controller
+class ItemHistoryController extends Controller
 {
     public function generate(Request $request)
     {
@@ -18,137 +16,140 @@ class itemhistorycontroller extends Controller
             'query' => 'required|string|max:1000',
         ]);
 
-        $query = $request->input('query');
+        $userQuery = $request->input('query');
 
-
+        // STEP 1: Prepare system prompt
         $systemMessage = <<<EOT
-        You are a strict data assistant. Convert the user's query into this EXACT JSON format:
-        
-        {
-          "output": "pdf | excel | chart | table",
-          "title": "Report title or null",
-          "chart_type": "bar | line | pie | scatter | table",
-          "action": "sum | count | avg | max | min | none",
-          "field": "column_to_aggregate or null",
-          "group_by": "column_name or null",
-          "filters": [
-            {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
-          ],
-           "columns": ["column1", "column2", "column3"],
-            "aggregation": {"action": "sum | avg | count", "field": "field_name"}
-        }
-        
-        Use only these columns from the `item_historys` table:
-        - item_history_id, external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retial_price, expire_date, cost_price, created_at, updated_at
-        
-        To get `item_Name`, join `items.item_id `
-        To get `branch_name`, join `branches.branch_id`
-        
-        DO NOT return explanation. ONLY return a valid JSON object.
-        EOT;
+You are a strict assistant that converts user natural language requests into structured JSON with EXACTLY this format:
 
-        $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))
-            ->timeout(30)
-            ->post('https://api.openai.com/v1/chat/completions', [
-                'model' => 'gpt-4o',
-                'messages' => [
-                    ['role' => 'system', 'content' => $systemMessage],
-                    ['role' => 'user', 'content' => $query],
-                ],
-                'temperature' => 0.3,
-            ]);
+{
+  "output": "pdf | excel | chart | table",
+  "title": "string or null",
+  "chart_type": "bar | line | pie | scatter | table",
+  "action": "sum | count | avg | max | min | none",
+  "field": "column_to_aggregate or null",
+  "group_by": "column_name or null",
+  "filters": [
+    {"column": "field_name", "operator": "= | > | < | >= | <= | between", "value": "value or [start, end]"}
+  ],
+  "columns": ["column1", "column2", "column3"],
+  "aggregation": {"action": "sum | avg | count", "field": "field_name"}
+}
 
-        if ($openAiResponse->failed()) {
+Use only these columns from `item_historys`:
+- external_number, branch_id, location_id, document_number, transaction_date, description,
+  item_id, quantity, free_quantity, batch_number, whole_sale_price, retial_price,
+  expire_date, cost_price
 
-            return response()->json(['error' => 'Failed to connect to OpenAI API'], 503);
-        }
+You can join:
+- `items.item_id` to get `item_code`, `item_Name`
+- `branches.branch_id` to get `branch_name`, `address`
+
+Do not include explanation. Return only a single valid JSON object.
+EOT;
 
 
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4',
             'messages' => [
                 ['role' => 'system', 'content' => $systemMessage],
-                ['role' => 'user', 'content' => $query],
+                ['role' => 'user', 'content' => $userQuery],
             ],
 
         ]);
 
-        $openAiData = $openAiResponse->json();
-        $message = $openAiData['choices'][0]['message']['content'] ?? null;
-
-        if (!$message) {
-
-            return response()->json(['error' => 'Invalid OpenAI response'], 500);
+        if ($openAiResponse->failed()) {
+            return response()->json(['error' => 'OpenAI API failed'], 500);
         }
 
-     try {
-            // Decode the structured instruction returned by OpenAI
-            $instructions = json_decode($message, true);
+        $content = $openAiResponse['choices'][0]['message']['content'] ?? null;
+
+        try {
+            $instructions = json_decode($content, true);
             if (!is_array($instructions)) {
-                throw new \Exception('Invalid JSON from OpenAI');
+                throw new \Exception('Invalid JSON returned by OpenAI.');
             }
 
-            $outputType = $instructions['output'] ?? 'table';
-            $chartType = $instructions['chart_type'] ?? 'pie';
-            $filters = $instructions['filters'] ?? [];
+            $output = $instructions['output'] ?? 'chart';
+            $chartType = $instructions['chart_type'] ?? 'bar';
+            $title = $instructions['title'] ?? 'Report';
+            $groupBy = $instructions['group_by'] ?? null;
+            $aggregation = $instructions['aggregation'] ?? null;
             $columns = $instructions['columns'] ?? [];
-            $aggregation = $instructions['aggregation'] ?? null; // Now this will be set correctly
+            $filters = $instructions['filters'] ?? [];
 
-            // Build the query based on the OpenAI instruction
-            $queryBuilder = DB::table('item_historys')
+            // STEP 3: Build Query
+            $query = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
-            // Apply the filters dynamically based on what OpenAI returns
+            // Filters
             foreach ($filters as $filter) {
-                $column = $filter['column'];
-                $operator = $filter['operator'];
-                $value = $filter['value'];
-                $queryBuilder->where($column, $operator, $value);
-            }
+                $col = $filter['column'];
+                $op = $filter['operator'];
+                $val = $filter['value'];
 
-            // Apply aggregation if specified (e.g., sum of quantity)
-            if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
-                $queryBuilder->selectRaw("$aggregation[action]($aggregation[field]) as value");
-            }
-
-            // Apply column selection for table output
-            if (empty($columns)) {
-                $columns = ['item_historys.transaction_date', 'items.item_Name', 'branches.branch_name', 'item_historys.quantity'];
-            }
-
-            $queryBuilder->select($columns);
-            $results = $queryBuilder->get();
-
-            // Format results into the desired structure for output
-            $formattedData = $results->map(function ($row) use ($columns) {
-                $data = [];
-                foreach ($columns as $column) {
-                    $data[last(explode('.', $column))] = $row->$column ?? null;
+                if (is_array($val) && strtolower($op) === 'between') {
+                    $query->whereBetween($col, $val);
+                } else {
+                    $query->where($col, $op, $val);
                 }
-                return $data;
-            });
+            }
+//q
+            // Aggregation
+            if ($aggregation && isset($aggregation['action'], $aggregation['field'])) {
+                $aggAction = $aggregation['action'];
+                $aggField = $aggregation['field'];
+                $query->selectRaw("$aggAction($aggField) as value");
 
-            // Return the formatted data based on the output type
-            if ($outputType === 'chart') {
+                if ($groupBy) {
+                    $query->addSelect($groupBy)->groupBy($groupBy);
+                }
+            } elseif (!empty($columns)) {
+                $query->select($columns);
+            } else {
+                $query->select('item_historys.*');
+            }
+
+            $data = $query->get();
+
+            // STEP 4: Format Data
+            $formatted = $data->map(function ($row) {
+                return (array) $row;
+            })->toArray();
+
+            // STEP 5: Return Output
+            if ($output === 'chart') {
                 return response()->json([
-                    'charts' => [
-                        [
-                            'type' => $chartType,
-                            'data' => $formattedData,
-                        ]
-                    ]
-                ]);
-            } elseif ($outputType === 'table') {
-                return response()->json([
-                    'table' => $formattedData,
+                    'charts' => [[
+                        'type' => $chartType,
+                        'title' => $title,
+                        'data' => $formatted,
+                        'nameKey' => $groupBy ?? 'label',
+                        'valueKey' => $aggregation['field'] ?? 'value',
+                        'colors' => ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#ff4d4f']
+                    ]]
                 ]);
             }
 
-        } catch (\JsonException $e) {
-            return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
+            if ($output === 'pdf') {
+                $pdf = Pdf::loadView('reports.pdf', ['title' => $title, 'data' => $formatted]);
+                return response($pdf->output(), 200)->header('Content-Type', 'application/pdf');
+            }
+
+            // if ($output === 'excel') {
+            //     return Excel::download(new GenericExport($formatted), 'report.xlsx');
+            // }
+
+            return response()->json(['table' => $formatted]);
+
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to process request', 'details' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => 'Error processing request.',
+                'details' => $e->getMessage(),
+                'raw' => $content,
+            ], 500);
         }
     }
+
 }
