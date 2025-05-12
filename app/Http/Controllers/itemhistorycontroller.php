@@ -81,6 +81,7 @@ EOT;
         $userColumns = $json['columns'] ?? [];
 
         $select = [];
+$nameKey = 'name';
 foreach ($userColumns as $col) {
     // Skip raw quantity unless explicitly grouped
     if ($col === 'quantity') {
