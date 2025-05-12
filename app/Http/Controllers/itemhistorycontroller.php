@@ -19,7 +19,7 @@ class ItemHistoryController extends Controller
         $userQuery = $request->input('query');
 
         // STEP 1: Prepare system prompt
-        $systemMessage = <<<EOT
+         $systemMessage = <<<EOT
 You are an assistant that converts user queries into structured JSON for chart/report generation.
 Only use these MySQL tables: item_historys, items, branches.
 Ensure all column names are qualified (e.g., item_historys.item_id) to avoid ambiguity.
@@ -52,7 +52,6 @@ You can join:
 Do not include explanation. Return only a single valid JSON object.
 EOT;
 
-
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4',
             'messages' => [
@@ -62,9 +61,8 @@ EOT;
 
         ]);
 
-      // Log the OpenAI response to debug the issue
-        $openAiResponseData = $openAiResponse->json();
-       
+       $openAiResponseData = $openAiResponse->json();
+        
         // Check if there's a valid response
         if (empty($openAiResponseData['choices'])) {
             return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
@@ -83,7 +81,8 @@ EOT;
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-   $field = "item_historys." . $json['field'];
+        // Prepare the query parts based on OpenAI response
+        $field = "item_historys." . $json['field'];
         $aggregation = $json['aggregation']['action'] ?? 'sum';
         $aggAlias = 'value';
         $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
@@ -95,24 +94,27 @@ EOT;
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        // Apply filters (where clauses)
-        if (!empty($filters)) {
-            $whereClauses = [];
-            foreach ($filters as $filter) {
-                $column = $filter['column'];
-                $operator = $filter['operator'];
-                $value = $filter['value'];
+        // Initialize filter condition (to handle dynamic WHERE)
+        $whereClauses = [];
 
-                if ($operator === 'between') {
-                    $whereClauses[] = "item_historys.$column BETWEEN '$value[0]' AND '$value[1]'";
-                } else {
-                    $whereClauses[] = "item_historys.$column $operator '$value'";
-                }
+        // Apply filters dynamically based on user input
+        foreach ($filters as $filter) {
+            $column = $filter['column'];
+            $operator = $filter['operator'];
+            $value = $filter['value'];
+
+            // Handling 'BETWEEN' operator as an array of values
+            if ($operator === 'between') {
+                $whereClauses[] = "item_historys.$column BETWEEN $value[0] AND $value[1]";
+            } else {
+                $whereClauses[] = "item_historys.$column $operator '$value'";
             }
-            // Add WHERE clause to the query (only one WHERE is used)
-            $sql .= " WHERE " . implode(" AND ", $whereClauses);
         }
 
+        // If there are filters, append them to the query
+        if (!empty($whereClauses)) {
+            $sql .= " WHERE " . implode(' AND ', $whereClauses);
+        }
 
         // Apply grouping if necessary
         if ($groupBy) {
@@ -121,8 +123,8 @@ EOT;
 
         // Execute the raw SQL query
         try {
-dd($sql);
-            $results = DB::select(DB::raw($query));
+           dd($sql);
+            $results = DB::select(DB::raw($sql));
 
         } catch (\Exception $e) {
             return response()->json([
@@ -133,10 +135,9 @@ dd($sql);
 
         return response()->json([
             'title' => $json['title'] ?? 'Report',
-            'chart_type' => $json['chart_type'] ?? 'bar',
+            'chart_type' => $json['chart_type'] ?? 'pie', // Default to pie chart
             'data' => $results,
-            'colors' => ['#3B82F6', '#EF4444', '#FACC15', '#8B5CF6'] // blue, red, yellow, purple
+            'colors' => ['#3B82F6', '#EF4444', '#FACC15', '#8B5CF6'] // Blue, red, yellow, purple
         ]);
     }
 }
-
