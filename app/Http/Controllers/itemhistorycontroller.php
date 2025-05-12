@@ -163,6 +163,8 @@ foreach ($userColumns as $col) {
         return response()->json([
             'title' => $json['title'] ?? 'Chart',
             'chart_type' => $json['chart_type'] ?? 'bar',
+            'valueKey' => 'value',
+            'colors' => ['#8884d8', '#82ca9d', '#ffc658'],
             'data' => $results
         ]);
     }
