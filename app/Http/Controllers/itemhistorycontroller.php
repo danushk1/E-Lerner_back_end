@@ -61,26 +61,27 @@ EOT;
 
         ]);
 
-       $openAiResponseData = $openAiResponse->json();
-        
+              $openAiResponseData = $openAiResponse->json();
+
         // Check if there's a valid response
         if (empty($openAiResponseData['choices'])) {
             return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
         }
 
         $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
-        
+
         if (!$structured) {
             return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
         }
 
         // Decode the structured JSON from OpenAI
-          $json = json_decode($structured, true);
+        $json = json_decode($structured, true);
 
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
+        // Build SELECT clause
         $select = [];
         foreach ($json['columns'] as $col) {
             $select[] = match (true) {
@@ -90,16 +91,16 @@ EOT;
             };
         }
 
-        // Aggregation
+        // Add aggregation
         $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
         $select[] = $agg;
 
-        // Construct initial SQL query
+        // Corrected SQL Query with proper table aliases and JOIN conditions
         $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        // Apply filters if they exist in the query
+        // Filters
         $filters = $json['filters'] ?? [];
         if (!empty($filters)) {
             $sql .= " WHERE ";
@@ -121,18 +122,21 @@ EOT;
             $sql .= implode(" AND ", $where);
         }
 
-        // Add GROUP BY clause dynamically based on selected columns
+        // Ensure proper GROUP BY logic
         if (!empty($json['columns'])) {
-            $groupBy = [];
+            $groupByCols = [];
             foreach ($json['columns'] as $col) {
-                $groupBy[] = match (true) {
-                    in_array($col, ['item_code', 'item_name']) => "items.$col",
-                    $col === 'branch_name' => "branches.$col",
-                    default => "item_historys.$col"
-                };
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $groupByCols[] = "items.$col";
+                } elseif (in_array($col, ['branch_name', 'address'])) {
+                    $groupByCols[] = "branches.$col";
+                } else {
+                    $groupByCols[] = "item_historys.$col";
+                }
             }
-            $sql .= " GROUP BY " . implode(', ', $groupBy);
+            $sql .= "  GROUP BY " . implode(', ', $groupByCols);
         }
+
 
 dd($sql);
         // Execute the raw SQL query
