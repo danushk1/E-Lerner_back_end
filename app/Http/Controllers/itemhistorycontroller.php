@@ -97,18 +97,22 @@ EOT;
 
         // Apply filters (where clauses)
         if (!empty($filters)) {
+            $whereClauses = [];
             foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
 
                 if ($operator === 'between') {
-                    $sql .= " WHERE $column BETWEEN '$value[0]' AND '$value[1]'";
+                    $whereClauses[] = "item_historys.$column BETWEEN '$value[0]' AND '$value[1]'";
                 } else {
-                    $sql .= " WHERE $column $operator '$value'";
+                    $whereClauses[] = "item_historys.$column $operator '$value'";
                 }
             }
+            // Add WHERE clause to the query (only one WHERE is used)
+            $sql .= " WHERE " . implode(" AND ", $whereClauses);
         }
+
 
         // Apply grouping if necessary
         if ($groupBy) {
