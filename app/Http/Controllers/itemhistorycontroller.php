@@ -20,7 +20,11 @@ class ItemHistoryController extends Controller
 
         // STEP 1: Prepare system prompt
         $systemMessage = <<<EOT
-You are a strict assistant that converts user natural language requests into structured JSON with EXACTLY this format:
+You are an assistant that converts user queries into structured JSON for chart/report generation.
+Only use these MySQL tables: item_historys, items, branches.
+Ensure all column names are qualified (e.g., item_historys.item_id) to avoid ambiguity.
+Supported outputs: chart, pdf, excel.
+Supported chart types: pie, bar, line.
 
 {
   "output": "pdf | excel | chart | table",
@@ -58,17 +62,48 @@ EOT;
 
         ]);
 
-     $structured = $openAiResponse->json('choices.0.message.content');
+      // Log the OpenAI response to debug the issue
+        $openAiResponseData = $openAiResponse->json();
+       
+        // Check if there's a valid response
+        if (empty($openAiResponseData['choices'])) {
+            return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
+        }
+
+        $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
+        
+        if (!$structured) {
+            return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
+        }
+
+        // Decode the structured JSON from OpenAI
         $json = json_decode($structured, true);
 
         if (!isset($json['action']) || !isset($json['field'])) {
-            return response()->json(['error' => 'Invalid response from OpenAI'], 422);
+            return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-        // Start query
-        $query = DB::table('item_historys')
-            ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
-            ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
+        // Start building the raw SQL query
+        $query = "SELECT ";
+
+        // Aggregation (sum, count, etc.)
+        $field = "item_historys." . $json['field'];
+        $aggregation = $json['aggregation']['action'] ?? 'sum';
+        $aggAlias = 'value';
+        
+        if (!empty($json['group_by'])) {
+            $groupBy = "item_historys." . $json['group_by'];
+            $query .= "$groupBy, $aggregation($field) as $aggAlias ";
+            $query .= "FROM item_historys ";
+            $query .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
+            $query .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
+            $query .= "GROUP BY $groupBy ";
+        } else {
+            $query .= "$field, $aggregation($field) as $aggAlias ";
+            $query .= "FROM item_historys ";
+            $query .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
+            $query .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
+        }
 
         // Apply filters
         if (!empty($json['filters'])) {
@@ -79,24 +114,11 @@ EOT;
 
                 $qualified = "item_historys.$column";
                 if ($operator === 'between') {
-                    $query->whereBetween($qualified, $value);
+                    $query .= "WHERE $qualified BETWEEN '$value[0]' AND '$value[1]' ";
                 } else {
-                    $query->where($qualified, $operator, $value);
+                    $query .= "WHERE $qualified $operator '$value' ";
                 }
             }
-        }
-
-        // Select + Aggregation
-        $field = "item_historys." . $json['field'];
-        $aggregation = $json['aggregation']['action'] ?? 'sum';
-        $aggAlias = 'value';
-
-        if (!empty($json['group_by'])) {
-            $groupBy = "item_historys." . $json['group_by'];
-            $query->select($groupBy, DB::raw("$aggregation($field) as $aggAlias"))
-                  ->groupBy($groupBy);
-        } else {
-            $query->select($field, DB::raw("$aggregation($field) as $aggAlias"));
         }
 
         // Columns (optional)
@@ -105,11 +127,12 @@ EOT;
             foreach ($json['columns'] as $col) {
                 $selects[] = "item_historys.$col";
             }
-            $query->addSelect($selects);
+            $query .= "SELECT " . implode(", ", $selects) . " ";
         }
 
+        // Execute the raw SQL query
         try {
-            $results = $query->get();
+            $results = DB::select(DB::raw($query));
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to process request',
@@ -125,5 +148,4 @@ EOT;
         ]);
     }
 }
-
 
