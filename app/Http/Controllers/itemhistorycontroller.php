@@ -132,11 +132,8 @@ EOT;
         $sql .= " GROUP BY " . implode(', ', $group);
 
 
-dd($sql);
-        // Apply grouping if necessary
-        if ($groupBy) {
-            $sql .= " GROUP BY item_historys.item_id, items.item_code, items.item_name";
-        }
+
+       
         // Execute the raw SQL query
         try {
          
