@@ -105,38 +105,33 @@ EOT;
 
 
         // Initialize filter condition (to handle dynamic WHERE)
-       $whereClauses = [];
-
-foreach ($filters as $filter) {
+     $filterCount = 0;
+        foreach ($json['filters'] ?? [] as $filter) {
             $column = $filter['column'];
             $operator = strtolower($filter['operator']);
             $value = $filter['value'];
 
-            // Avoid double-prefixing
-            if (strpos($column, '.') === false) {
-                if (in_array($column, ['item_code', 'item_name'])) {
-                    $qualifiedColumn = "items.$column";
-                } elseif (in_array($column, ['branch_name', 'address'])) {
-                    $qualifiedColumn = "branches.$column";
-                } else {
-                    $qualifiedColumn = "item_historys.$column";
-                }
+            if ($filterCount === 0) {
+                $sql .= " WHERE ";
             } else {
-                $qualifiedColumn = $column;
+                $sql .= " AND ";
+            }
+
+            if (in_array($column, ['item_code', 'item_name'])) {
+                $column = "items.$column";
+            } elseif (in_array($column, ['branch_name', 'address'])) {
+                $column = "branches.$column";
+            } else {
+                $column = "item_historys.$column";
             }
 
             if ($operator === 'between' && is_array($value)) {
-                $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
+                $sql .= "$column BETWEEN '{$value[0]}' AND '{$value[1]}' ";
             } else {
-                $escapedValue = is_numeric($value) ? $value : "'$value'";
-                $whereClauses[] = "$qualifiedColumn $operator $escapedValue";
+                $sql .= "$column $operator '$value' ";
             }
-        }
 
-
-        // If there are filters, append them to the query
-        if (!empty($whereClauses)) {
-            $sql .= " WHERE " . implode(' AND ', $whereClauses);
+            $filterCount++;
         }
 
         // Apply grouping if necessary
