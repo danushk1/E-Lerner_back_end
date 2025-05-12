@@ -142,7 +142,7 @@ EOT;
                     $groupByCols[] = "item_historys.$col";
                 }
             }
-            $sql .= "GROUP BY " . implode(', ', $groupByCols);
+            $sql .= "  GROUP BY " . implode(', ', $groupByCols);
         }
 
 dd($sql);
