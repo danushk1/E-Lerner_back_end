@@ -134,15 +134,15 @@ foreach ($userColumns as $col) {
 
         if (!empty($userColumns)) {
             $groupCols = [];
-            // foreach ($userColumns as $col) {
-            //     $groupCols[] = match (true) {
-            //         in_array($col, ['item_code', 'item_name']) => "items.$col",
-            //         $col === 'branch_name' => "branches.$col",
-            //         str_starts_with($col, 'items.') => $col,
-            //         str_starts_with($col, 'branches.') => $col,
-            //         default => "$col"
-            //     };
-            // }
+            foreach ($userColumns as $col) {
+                $groupCols[] = match (true) {
+                    in_array($col, ['item_code', 'item_name']) => "items.$col",
+                    $col === 'branch_name' => "branches.$col",
+                    str_starts_with($col, 'items.') => $col,
+                    str_starts_with($col, 'branches.') => $col,
+                    default => "$col"
+                };
+            }
             $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
 
