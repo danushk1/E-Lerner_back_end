@@ -48,7 +48,7 @@ You can join:
 Do not include explanation. Return only a single valid JSON object.
 EOT;
 
-
+try {
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4',
             'messages' => [
@@ -58,106 +58,68 @@ EOT;
 
         ]);
 
-        if ($openAiResponse->failed()) {
-            return response()->json(['error' => 'OpenAI API failed'], 500);
-        }
+        $parsed = json_decode($openAiResponse['choices'][0]['message']['content'], true);
 
-        $content = $openAiResponse['choices'][0]['message']['content'] ?? null;
-
-        try {
-            $instructions = json_decode($content, true);
-            if (!is_array($instructions)) {
-                throw new \Exception('Invalid JSON returned by OpenAI.');
+            if (!$parsed || !isset($parsed['action'], $parsed['field'], $parsed['group_by'])) {
+                return response()->json(['error' => 'Invalid structure from AI', 'raw' => $openAiResponse['choices'][0]['message']['content']], 422);
             }
 
-             $outputType = $instructions['output'] ?? 'table';
-            $chartType = $instructions['chart_type'] ?? 'pie';
-            $filters = $instructions['filters'] ?? [];
-            $columns = $instructions['columns'] ?? [];
-            $aggregation = $instructions['aggregation'] ?? null;
-            $groupBy = $instructions['group_by'] ?? null;
+           $query = DB::table('item_historys')
+                ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
+                ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
-            // STEP 3: Build Query
-$queryBuilder = DB::table('item_historys')
-    ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
-    ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
-
-if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
-    $aggAction = $aggregation['action'];
-    $aggField = $aggregation['field'];
-    $aggFieldFull = "item_historys.$aggField";  // Ensure field comes from item_historys table
-
-    // Fix for ambiguity: Explicitly use item_historys.item_id in the group by and select statements
-    $queryBuilder->selectRaw("$aggAction($aggFieldFull) as value, item_historys.item_id");
-
-    // If group_by is specified, add it properly
-    if ($groupBy) {
-        $groupByFull = "item_historys.$groupBy";  // Ensure group by is explicitly item_historys
-        $queryBuilder->groupBy($groupByFull);  // Fix: Ensure we group only by item_historys.item_id
-    } else {
-        // Default to grouping by item_id if no group_by specified
-        $queryBuilder->groupBy('item_historys.item_id');
-    }
-}
-
-
-            // Filters
-          if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
-                $aggAction = $aggregation['action'];
-                $aggField = $aggregation['field'];
-                $aggFieldFull = "item_historys.$aggField";  // Fix for ambiguous column error
-
-                // Fixing the query to resolve column ambiguity
-                $queryBuilder->selectRaw("$aggAction($aggFieldFull) as value");
-
-                // If group_by is specified, add it properly
-                if ($groupBy) {
-                    $groupByFull = "item_historys.$groupBy";  // Fix for ambiguous column error
-                    $queryBuilder->addSelect($groupByFull)->groupBy($groupByFull);
+            // Apply filters if available
+            if (!empty($parsed['filters'])) {
+                foreach ($parsed['filters'] as $filter) {
+                    $table = $this->resolveTableForColumn($filter['field']);
+                    $column = "$table.{$filter['field']}";
+                    $operator = $filter['operator'] ?? '=';
+                    $value = $filter['value'];
+                    $query->where($column, $operator, $value);
                 }
             }
-           if (empty($columns)) {
-                $columns = ['item_historys.transaction_date', 'items.item_Name', 'branches.branch_name', 'item_historys.quantity'];
-            }
 
-            // Select the columns
-            $queryBuilder->select($columns);
-            $results = $queryBuilder->get();
+            // Select & group
+            $aggField = $this->qualifyColumn($parsed['field']);
+            $groupBy = $this->qualifyColumn($parsed['group_by']);
 
-            // Format results into the desired structure for output
-            $formattedData = $results->map(function ($row) use ($columns) {
-                $data = [];
-                foreach ($columns as $column) {
-                    $data[last(explode('.', $column))] = $row->$column ?? null;
-                }
-                return $data;
-            });
+            $query->select(
+                DB::raw(strtoupper($parsed['action']) . "($aggField) as value"),
+                $groupBy . ' as label'
+            )->groupBy($groupBy);
 
-            // Return the formatted data based on the output type
-            if ($outputType === 'chart') {
-                // Return the chart data to frontend
-                return response()->json([
-                    'charts' => [
-                        [
-                            'type' => $chartType,
-                            'data' => $formattedData,
-                            'colors' => ['#0000FF', '#FF0000', '#FFFF00', '#800080'], // Set pie chart colors (blue, red, yellow, purple)
-                        ]
-                    ]
-                ]);
-            } elseif ($outputType === 'table') {
-                // Return the table data to frontend
-                return response()->json([
-                    'table' => $formattedData,
-                ]);
-            }
+            $data = $query->get();
 
-        } catch (\JsonException $e) {
-            return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
+            return response()->json([
+                'type' => $parsed['chart_type'] ?? 'bar',
+                'title' => $parsed['title'] ?? 'Chart Result',
+                'data' => $data
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Failed to process request', 'details' => $e->getMessage()], 500);
+            return response()->json([
+                'error' => 'Failed to process request',
+                'details' => $e->getMessage()
+            ], 500);
         }
     }
 
+    private function resolveTableForColumn($column)
+    {
+        $itemHistorys = ['item_id', 'branch_id', 'transaction_date', 'quantity', 'free_quantity'];
+        $items = ['item_name', 'item_code', 'cost_price'];
+        $branches = ['branch_name', 'location_id'];
 
+        if (in_array($column, $itemHistorys)) return 'item_historys';
+        if (in_array($column, $items)) return 'items';
+        if (in_array($column, $branches)) return 'branches';
+
+        return 'item_historys'; // fallback
+    }
+
+    private function qualifyColumn($column)
+    {
+        return $this->resolveTableForColumn($column) . '.' . $column;
+    }
 }
+
+
