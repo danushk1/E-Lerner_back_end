@@ -145,7 +145,7 @@ foreach ($userColumns as $col) {
         //     }
         //     $sql .= " GROUP BY " . implode(', ', $groupCols);
         // }
-
+dd($sql);
         $results = DB::select($sql);
 
         if ($json['output'] === 'pdf') {
