@@ -101,7 +101,7 @@ EOT;
             }
         }
 
-        $selectCols[] = strtoupper($aggregation) . "(item_historys.$field) AS $aggAlias";
+        $selectCols[] = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
 
         $sql = "SELECT " . implode(', ', $selectCols) . "
                 FROM item_historys
