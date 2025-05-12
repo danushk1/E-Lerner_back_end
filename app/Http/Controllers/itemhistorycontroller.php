@@ -88,61 +88,60 @@ EOT;
         $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
         $filters = $json['filters'] ?? [];
 
- $columns = [
-            'item_historys.item_id',
-            'items.item_code',
-            'items.item_name',
-            strtoupper($aggregation) . "(item_historys.$field) AS $aggAlias"
-        ];
-        // Start building the base query
-        $sql = "SELECT item_historys.item_id, items.item_code, items.item_name, SUM(item_historys.quantity) AS $aggAlias
+ foreach ($json['columns'] as $col) {
+            if (in_array($col, ['item_code', 'item_name'])) {
+                $selectCols[] = "items.$col";
+                $groupCols[] = "items.$col";
+            } elseif ($col === 'branch_name') {
+                $selectCols[] = "branches.$col";
+                $groupCols[] = "branches.$col";
+            } elseif ($col === 'external_number') {
+                $selectCols[] = "item_historys.$col";
+                $groupCols[] = "item_historys.$col";
+            }
+        }
+
+        $selectCols[] = strtoupper($aggregation) . "(item_historys.$field) AS $aggAlias";
+
+        $sql = "SELECT " . implode(', ', $selectCols) . "
                 FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
+
         // Initialize filter condition (to handle dynamic WHERE)
-       $whereClauses = [];
 
-foreach ($filters as $filter) {
-            $column = $filter['column'];
-            $operator = strtolower($filter['operator']);
-            $value = $filter['value'];
 
-            // Avoid double-prefixing
-            if (strpos($column, '.') === false) {
-                if (in_array($column, ['item_code', 'item_name'])) {
-                    $qualifiedColumn = "items.$column";
-                } elseif (in_array($column, ['branch_name', 'address'])) {
-                    $qualifiedColumn = "branches.$column";
+ if (!empty($filters)) {
+            $first = true;
+            foreach ($filters as $filter) {
+                $column = $filter['column'];
+                $operator = strtolower($filter['operator']);
+                $value = $filter['value'];
+                $prefix = $first ? ' WHERE ' : ' AND ';
+                $first = false;
+
+                if ($operator === 'between' && is_array($value)) {
+                    $sql .= "$prefix item_historys.$column BETWEEN '{$value[0]}' AND '{$value[1]}'";
                 } else {
-                    $qualifiedColumn = "item_historys.$column";
+                    $sql .= "$prefix item_historys.$column $operator '$value'";
                 }
-            } else {
-                $qualifiedColumn = $column;
-            }
-
-            if ($operator === 'between' && is_array($value)) {
-                $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
-            } else {
-                $escapedValue = is_numeric($value) ? $value : "'$value'";
-                $whereClauses[] = "$qualifiedColumn $operator $escapedValue";
             }
         }
 
-
-        // If there are filters, append them to the query
-        if (!empty($whereClauses)) {
-            $sql .= " WHERE " . implode(' AND ', $whereClauses);
+        if (!empty($groupCols)) {
+            $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
 
+dd($sql);
         // Apply grouping if necessary
         if ($groupBy) {
             $sql .= " GROUP BY item_historys.item_id, items.item_code, items.item_name";
         }
         // Execute the raw SQL query
         try {
-           dd($sql);
-            $results = DB::select(DB::raw($sql));
+         
+            $results = DB::select($sql);
 
         } catch (\Exception $e) {
             return response()->json([
