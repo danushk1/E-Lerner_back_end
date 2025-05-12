@@ -88,6 +88,12 @@ EOT;
         $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
         $filters = $json['filters'] ?? [];
 
+ $columns = [
+            'item_historys.item_id',
+            'items.item_code',
+            'items.item_name',
+            strtoupper($aggregation) . "(item_historys.$field) AS $aggAlias"
+        ];
         // Start building the base query
         $sql = "SELECT item_historys.item_id, items.item_code, items.item_name, SUM(item_historys.quantity) AS $aggAlias
                 FROM item_historys
@@ -98,27 +104,30 @@ EOT;
        $whereClauses = [];
 
 foreach ($filters as $filter) {
-    $column = $filter['column'];
-    $operator = strtolower($filter['operator']);
-    $value = $filter['value'];
-//dump($filter);
-    // Determine correct table prefix
-    if (in_array($column, ['item_code', 'item_name'])) {
-        $qualifiedColumn = "items.$column";
-    } elseif (in_array($column, ['branch_name', 'address'])) {
-        $qualifiedColumn = "branches.$column";
-    } else {
-        $qualifiedColumn = "item_historys.$column";
-    }
+            $column = $filter['column'];
+            $operator = strtolower($filter['operator']);
+            $value = $filter['value'];
 
-    // Apply filter logic
-    if ($operator === 'between' && is_array($value) && count($value) === 2) {
-        $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
-    } else {
-        $escapedValue = is_string($value) ? addslashes($value) : $value;
-        $whereClauses[] = "$qualifiedColumn $operator '$escapedValue'";
-    }
-}
+            // Avoid double-prefixing
+            if (strpos($column, '.') === false) {
+                if (in_array($column, ['item_code', 'item_name'])) {
+                    $qualifiedColumn = "items.$column";
+                } elseif (in_array($column, ['branch_name', 'address'])) {
+                    $qualifiedColumn = "branches.$column";
+                } else {
+                    $qualifiedColumn = "item_historys.$column";
+                }
+            } else {
+                $qualifiedColumn = $column;
+            }
+
+            if ($operator === 'between' && is_array($value)) {
+                $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
+            } else {
+                $escapedValue = is_numeric($value) ? $value : "'$value'";
+                $whereClauses[] = "$qualifiedColumn $operator $escapedValue";
+            }
+        }
 
 
         // If there are filters, append them to the query
