@@ -132,20 +132,20 @@ foreach ($userColumns as $col) {
             $sql .= implode(" AND ", $where);
         }
 
-        if (!empty($userColumns)) {
-            $groupCols = [];
-            foreach ($userColumns as $col) {
-                $groupCols[] = match (true) {
-                    in_array($col, ['item_code', 'item_name']) => "items.$col",
-                    $col === 'branch_name' => "branches.$col",
-                    str_starts_with($col, 'items.') => $col,
-                    str_starts_with($col, 'branches.') => $col,
-                    default => "item_historys.$col"
-                };
-            }
-            $sql .= " GROUP BY " . implode(', ', $groupCols);
-        }
-dd($sql);
+        // if (!empty($userColumns)) {
+        //     $groupCols = [];
+        //     foreach ($userColumns as $col) {
+        //         $groupCols[] = match (true) {
+        //             in_array($col, ['item_code', 'item_name']) => "items.$col",
+        //             $col === 'branch_name' => "branches.$col",
+        //             str_starts_with($col, 'items.') => $col,
+        //             str_starts_with($col, 'branches.') => $col,
+        //             default => "item_historys.$col"
+        //         };
+        //     }
+        //     $sql .= " GROUP BY " . implode(', ', $groupCols);
+        // }
+
         $results = DB::select($sql);
 
         if ($json['output'] === 'pdf') {
