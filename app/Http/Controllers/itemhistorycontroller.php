@@ -80,20 +80,26 @@ EOT;
         $select = [];
         $userColumns = $json['columns'] ?? [];
 
-        if (!empty($userColumns)) {
-            foreach ($userColumns as $col) {
-                $select[] = match (true) {
-                    in_array($col, ['item_code', 'item_name']) => "items.$col",
-                    $col === 'branch_name' => "branches.$col",
-                    str_starts_with($col, 'items.') => $col,
-                    str_starts_with($col, 'branches.') => $col,
-                    default => "item_historys.$col"
-                };
-            }
-        }
+        $select = [];
+foreach ($userColumns as $col) {
+    // Skip raw quantity unless explicitly grouped
+    if ($col === 'quantity') {
+        continue;
+    }
+
+    $select[] = match (true) {
+        in_array($col, ['item_code', 'item_name']) => "items.$col",
+        $col === 'branch_name' => "branches.$col",
+        str_starts_with($col, 'items.') => $col,
+        str_starts_with($col, 'branches.') => $col,
+        default => "item_historys.$col"
+    };
+}
+
 
         if (isset($json['aggregation']['action'], $json['aggregation']['field'])) {
-            $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
+             $field = str_replace(['item_historys.', 'items.', 'branches.'], '', $json['aggregation']['field']);
+            $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $field . ") AS value";
             $select[] = $agg;
         } else {
             $select = ["SUM(item_historys.quantity) AS value"];
