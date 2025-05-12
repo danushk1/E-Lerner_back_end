@@ -92,14 +92,13 @@ EOT;
         }
 
         // Add aggregation
-        $aggregation = $json['aggregation'];
-        $aggregationClause = strtoupper($aggregation['action']) . "(item_historys." . $aggregation['field'] . ") AS value";
-        $selectColumns[] = $aggregationClause;
+        $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
+        $select[] = $agg;
 
-        // Start SQL
-        $sql = "SELECT " . implode(', ', $selectColumns) . " FROM item_historys ";
-        $sql .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
-        $sql .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
+        $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
+                LEFT JOIN items ON item_historys.item_id = items.item_id
+                LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
+
 
         // Apply filters
         $filterCount = 0;
