@@ -101,49 +101,35 @@ EOT;
 
 
         // Apply filters
-        $filterCount = 0;
-        foreach ($json['filters'] ?? [] as $filter) {
-            $column = $filter['column'];
-            $operator = strtolower($filter['operator']);
-            $value = $filter['value'];
+           $filters = $json['filters'] ?? [];
+        if (!empty($filters)) {
+            $sql .= " WHERE ";
+            $where = [];
+            foreach ($filters as $filter) {
+                $column = match (true) {
+                    in_array($filter['column'], ['item_code', 'item_name']) => "items." . $filter['column'],
+                    $filter['column'] === 'branch_name' => "branches." . $filter['column'],
+                    default => "item_historys." . $filter['column']
+                };
 
-            if ($filterCount === 0) {
-                $sql .= "WHERE ";
-            } else {
-                $sql .= "AND ";
+                if ($filter['operator'] === 'between') {
+                    $where[] = "$column BETWEEN {$filter['value'][0]} AND {$filter['value'][1]}";
+                } else {
+                    $val = is_numeric($filter['value']) ? $filter['value'] : "'" . addslashes($filter['value']) . "'";
+                    $where[] = "$column {$filter['operator']} $val";
+                }
             }
-
-            if (in_array($column, ['item_code', 'item_name'])) {
-                $column = "items.$column";
-            } elseif (in_array($column, ['branch_name', 'address'])) {
-                $column = "branches.$column";
-            } else {
-                $column = "item_historys.$column";
-            }
-
-            if ($operator === 'between' && is_array($value)) {
-                $sql .= "$column BETWEEN '{$value[0]}' AND '{$value[1]}' ";
-            } else {
-                $sql .= "$column $operator '$value' ";
-            }
-
-            $filterCount++;
+            $sql .= implode(' AND ', $where);
         }
 
         // GROUP BY
-        if (!empty($json['columns'])) {
-            $groupByCols = [];
-            foreach ($json['columns'] as $col) {
-                if (in_array($col, ['item_code', 'item_name'])) {
-                    $groupByCols[] = "items.$col";
-                } elseif (in_array($col, ['branch_name', 'address'])) {
-                    $groupByCols[] = "branches.$col";
-                } else {
-                    $groupByCols[] = "item_historys.$col";
-                }
-            }
-            $sql .= "  GROUP BY " . implode(', ', $groupByCols);
-        }
+        $group = array_map(fn($col) =>
+            in_array($col, ['item_code', 'item_name']) ? "items.$col" :
+            ($col === 'branch_name' ? "branches.$col" : "item_historys.$col"),
+            $json['columns']
+        );
+        $sql .= " GROUP BY " . implode(', ', $group);
+
 
 dd($sql);
         // Apply grouping if necessary
