@@ -93,7 +93,7 @@ EOT;
 
         // Add aggregation
         $aggregation = $json['aggregation'];
-        $aggregationClause = strtoupper($aggregation['action']) . "(" . $aggregation['field'] . ") AS value";
+        $aggregationClause = strtoupper($aggregation['action']) . "(item_historys." . $aggregation['field'] . ") AS value";
         $selectColumns[] = $aggregationClause;
 
         // Start SQL
