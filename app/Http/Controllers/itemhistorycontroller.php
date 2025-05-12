@@ -132,7 +132,7 @@ dump($filter);
         }
         // Execute the raw SQL query
         try {
-           dd($sql);
+          // dd($sql);
             $results = DB::select(DB::raw($sql));
 
         } catch (\Exception $e) {
