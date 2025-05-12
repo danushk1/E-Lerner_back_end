@@ -83,14 +83,13 @@ EOT;
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-        // Start building the raw SQL query
-        $query = "SELECT ";
+  $query = "SELECT ";
 
-        // Aggregation (sum, count, etc.)
+        // Add Aggregation (sum, count, etc.)
         $field = "item_historys." . $json['field'];
         $aggregation = $json['aggregation']['action'] ?? 'sum';
         $aggAlias = 'value';
-        
+
         if (!empty($json['group_by'])) {
             $groupBy = "item_historys." . $json['group_by'];
             $query .= "$groupBy, $aggregation($field) as $aggAlias ";
@@ -105,7 +104,7 @@ EOT;
             $query .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
         }
 
-        // Apply filters
+        // Step 6: Apply filters if any
         if (!empty($json['filters'])) {
             foreach ($json['filters'] as $filter) {
                 $column = $filter['column'];
@@ -121,7 +120,7 @@ EOT;
             }
         }
 
-        // Columns (optional)
+        // Step 7: Add columns if specified
         if (!empty($json['columns'])) {
             $selects = [];
             foreach ($json['columns'] as $col) {
