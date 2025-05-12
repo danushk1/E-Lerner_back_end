@@ -93,7 +93,7 @@ foreach ($userColumns as $col) {
         $col === 'branch_name' => "branches.$col",
         str_starts_with($col, 'items.') => $col,
         str_starts_with($col, 'branches.') => $col,
-        default => "item_historys.$col"
+        default => "$col"
     };
 }
 
