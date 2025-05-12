@@ -81,7 +81,7 @@ EOT;
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-       $select = [];
+        $select = [];
         foreach ($json['columns'] as $col) {
             $select[] = match (true) {
                 in_array($col, ['item_code', 'item_name']) => "items.$col",
@@ -94,11 +94,12 @@ EOT;
         $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
         $select[] = $agg;
 
+        // Construct initial SQL query
         $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        // Filters
+        // Apply filters if they exist in the query
         $filters = $json['filters'] ?? [];
         if (!empty($filters)) {
             $sql .= " WHERE ";
@@ -120,6 +121,18 @@ EOT;
             $sql .= implode(" AND ", $where);
         }
 
+        // Add GROUP BY clause dynamically based on selected columns
+        if (!empty($json['columns'])) {
+            $groupBy = [];
+            foreach ($json['columns'] as $col) {
+                $groupBy[] = match (true) {
+                    in_array($col, ['item_code', 'item_name']) => "items.$col",
+                    $col === 'branch_name' => "branches.$col",
+                    default => "item_historys.$col"
+                };
+            }
+            $sql .= " GROUP BY " . implode(', ', $groupBy);
+        }
 
 dd($sql);
         // Execute the raw SQL query
