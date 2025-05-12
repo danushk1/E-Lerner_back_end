@@ -84,9 +84,10 @@ EOT;
 foreach ($userColumns as $col) {
     // Skip raw quantity unless explicitly grouped
     if ($col === 'quantity') {
-        continue;
+        continue; // Don't add quantity to select if we're aggregating it
     }
 
+    // Add fields from items, branches, or item_historys to select
     $select[] = match (true) {
         in_array($col, ['item_code', 'item_name']) => "items.$col",
         $col === 'branch_name' => "branches.$col",
@@ -95,6 +96,7 @@ foreach ($userColumns as $col) {
         default => "item_historys.$col"
     };
 }
+
 
 
         if (isset($json['aggregation']['action'], $json['aggregation']['field'])) {
