@@ -82,28 +82,23 @@ EOT;
         }
 
         // Prepare the query parts based on OpenAI response
-        $field = "item_historys." . $json['field'];
-        $aggregation = $json['aggregation']['action'] ?? 'sum';
-        $aggAlias = 'value';
-        $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
-        $filters = $json['filters'] ?? [];
-
- foreach ($json['columns'] as $col) {
-            if (in_array($col, ['item_code', 'item_name'])) {
-                $selectCols[] = "items.$col";
-                $groupCols[] = "items.$col";
-            } elseif ($col === 'branch_name') {
-                $selectCols[] = "branches.$col";
-                $groupCols[] = "branches.$col";
-            } elseif ($col === 'external_number') {
-                $selectCols[] = "item_historys.$col";
-                $groupCols[] = "item_historys.$col";
+    $select = [];
+        foreach ($json['columns'] as $col) {
+            if (str_contains($col, '.')) {
+                $select[] = $col;
+            } elseif (in_array($col, ['item_code', 'item_name'])) {
+                $select[] = "items.$col";
+            } elseif (in_array($col, ['branch_name', 'address'])) {
+                $select[] = "branches.$col";
+            } else {
+                $select[] = "item_historys.$col";
             }
         }
 
-        $selectCols[] = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
-
-        $sql = "SELECT " . implode(', ', $selectCols) . "
+        // Add aggregation
+        $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
+        $select[] = $agg;
+        $sql = "SELECT " . implode(', ', $select) . "
                 FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
