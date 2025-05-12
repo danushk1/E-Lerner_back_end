@@ -58,43 +58,68 @@ try {
 
         ]);
 
-        $parsed = json_decode($openAiResponse['choices'][0]['message']['content'], true);
+         $content = $openAiResponse->json();
+            $responseJson = json_decode($content['choices'][0]['message']['content'], true);
 
-            if (!$parsed || !isset($parsed['action'], $parsed['field'], $parsed['group_by'])) {
-                return response()->json(['error' => 'Invalid structure from AI', 'raw' => $openAiResponse['choices'][0]['message']['content']], 422);
+            if (!$responseJson) {
+                return response()->json(['error' => 'Invalid response from OpenAI'], 422);
             }
 
-           $query = DB::table('item_historys')
+            // Step 2: Build query
+            $query = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
-            // Apply filters if available
-            if (!empty($parsed['filters'])) {
-                foreach ($parsed['filters'] as $filter) {
-                    $table = $this->resolveTableForColumn($filter['field']);
-                    $column = "$table.{$filter['field']}";
-                    $operator = $filter['operator'] ?? '=';
+            // Select columns
+            if (!empty($responseJson['columns'])) {
+                $selects = [];
+                foreach ($responseJson['columns'] as $col) {
+                    if (in_array($col, ['item_id', 'branch_id'])) {
+                        $selects[] = "item_historys.$col";
+                    } else {
+                        $selects[] = "item_historys.$col";
+                    }
+                }
+                $query->addSelect(DB::raw(implode(',', $selects)));
+            }
+
+            // Aggregation
+            if (!empty($responseJson['aggregation'])) {
+                $agg = $responseJson['aggregation'];
+                $query->addSelect(DB::raw("{$agg['action']}(item_historys.{$agg['field']}) as value"));
+            }
+
+            // Group By
+            if (!empty($responseJson['group_by'])) {
+                $query->groupBy("item_historys." . $responseJson['group_by']);
+                $query->addSelect("item_historys." . $responseJson['group_by']);
+            }
+
+            // Filters
+            if (!empty($responseJson['filters'])) {
+                foreach ($responseJson['filters'] as $filter) {
+                    $column = "item_historys." . $filter['column'];
+                    $operator = $filter['operator'];
                     $value = $filter['value'];
-                    $query->where($column, $operator, $value);
+
+                    if ($operator === 'between') {
+                        $query->whereBetween($column, $value);
+                    } else {
+                        $query->where($column, $operator, $value);
+                    }
                 }
             }
 
-            // Select & group
-            $aggField = $this->qualifyColumn($parsed['field']);
-            $groupBy = $this->qualifyColumn($parsed['group_by']);
-
-            $query->select(
-                DB::raw(strtoupper($parsed['action']) . "($aggField) as value"),
-                $groupBy . ' as label'
-            )->groupBy($groupBy);
-
-            $data = $query->get();
+            // Step 3: Execute query
+            $results = $query->get();
 
             return response()->json([
-                'type' => $parsed['chart_type'] ?? 'bar',
-                'title' => $parsed['title'] ?? 'Chart Result',
-                'data' => $data
+                'type' => $responseJson['output'],
+                'title' => $responseJson['title'],
+                'chart_type' => $responseJson['chart_type'],
+                'data' => $results
             ]);
+
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to process request',
@@ -102,24 +127,5 @@ try {
             ], 500);
         }
     }
-
-    private function resolveTableForColumn($column)
-    {
-        $itemHistorys = ['item_id', 'branch_id', 'transaction_date', 'quantity', 'free_quantity'];
-        $items = ['item_name', 'item_code', 'cost_price'];
-        $branches = ['branch_name', 'location_id'];
-
-        if (in_array($column, $itemHistorys)) return 'item_historys';
-        if (in_array($column, $items)) return 'items';
-        if (in_array($column, $branches)) return 'branches';
-
-        return 'item_historys'; // fallback
-    }
-
-    private function qualifyColumn($column)
-    {
-        return $this->resolveTableForColumn($column) . '.' . $column;
-    }
 }
-
 
