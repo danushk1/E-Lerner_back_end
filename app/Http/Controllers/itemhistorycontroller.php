@@ -70,86 +70,75 @@ EOT;
                 throw new \Exception('Invalid JSON returned by OpenAI.');
             }
 
-            $output = $instructions['output'] ?? 'chart';
-            $chartType = $instructions['chart_type'] ?? 'bar';
-            $title = $instructions['title'] ?? 'Report';
-            $groupBy = $instructions['group_by'] ?? null;
-            $aggregation = $instructions['aggregation'] ?? null;
-            $columns = $instructions['columns'] ?? [];
+             $outputType = $instructions['output'] ?? 'table';
+            $chartType = $instructions['chart_type'] ?? 'pie';
             $filters = $instructions['filters'] ?? [];
+            $columns = $instructions['columns'] ?? [];
+            $aggregation = $instructions['aggregation'] ?? null;
+            $groupBy = $instructions['group_by'] ?? null;
 
             // STEP 3: Build Query
-            $query = DB::table('item_historys')
+            $queryBuilder = DB::table('item_historys')
                 ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
                 ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
             // Filters
-            foreach ($filters as $filter) {
-                $col = $filter['column'];
-                $op = $filter['operator'];
-                $val = $filter['value'];
-
-                if (is_array($val) && strtolower($op) === 'between') {
-                    $query->whereBetween($col, $val);
-                } else {
-                    $query->where($col, $op, $val);
-                }
-            }
-//q
-            // Aggregation
-            if ($aggregation && isset($aggregation['action'], $aggregation['field'])) {
+          if ($aggregation && isset($aggregation['action']) && isset($aggregation['field'])) {
                 $aggAction = $aggregation['action'];
                 $aggField = $aggregation['field'];
-                $query->selectRaw("$aggAction($aggField) as value");
+                $aggFieldFull = "item_historys.$aggField";  // Fix for ambiguous column error
 
+                // Fixing the query to resolve column ambiguity
+                $queryBuilder->selectRaw("$aggAction($aggFieldFull) as value");
+
+                // If group_by is specified, add it properly
                 if ($groupBy) {
-                    $query->addSelect($groupBy)->groupBy($groupBy);
+                    $groupByFull = "item_historys.$groupBy";  // Fix for ambiguous column error
+                    $queryBuilder->addSelect($groupByFull)->groupBy($groupByFull);
                 }
-            } elseif (!empty($columns)) {
-                $query->select($columns);
-            } else {
-                $query->select('item_historys.*');
+            }
+           if (empty($columns)) {
+                $columns = ['item_historys.transaction_date', 'items.item_Name', 'branches.branch_name', 'item_historys.quantity'];
             }
 
-            $data = $query->get();
+            // Select the columns
+            $queryBuilder->select($columns);
+            $results = $queryBuilder->get();
 
-            // STEP 4: Format Data
-            $formatted = $data->map(function ($row) {
-                return (array) $row;
-            })->toArray();
+            // Format results into the desired structure for output
+            $formattedData = $results->map(function ($row) use ($columns) {
+                $data = [];
+                foreach ($columns as $column) {
+                    $data[last(explode('.', $column))] = $row->$column ?? null;
+                }
+                return $data;
+            });
 
-            // STEP 5: Return Output
-            if ($output === 'chart') {
+            // Return the formatted data based on the output type
+            if ($outputType === 'chart') {
+                // Return the chart data to frontend
                 return response()->json([
-                    'charts' => [[
-                        'type' => $chartType,
-                        'title' => $title,
-                        'data' => $formatted,
-                        'nameKey' => $groupBy ?? 'label',
-                        'valueKey' => $aggregation['field'] ?? 'value',
-                        'colors' => ['#8884d8', '#82ca9d', '#ffc658', '#ff7300', '#ff4d4f']
-                    ]]
+                    'charts' => [
+                        [
+                            'type' => $chartType,
+                            'data' => $formattedData,
+                            'colors' => ['#0000FF', '#FF0000', '#FFFF00', '#800080'], // Set pie chart colors (blue, red, yellow, purple)
+                        ]
+                    ]
+                ]);
+            } elseif ($outputType === 'table') {
+                // Return the table data to frontend
+                return response()->json([
+                    'table' => $formattedData,
                 ]);
             }
 
-            if ($output === 'pdf') {
-                $pdf = Pdf::loadView('reports.pdf', ['title' => $title, 'data' => $formatted]);
-                return response($pdf->output(), 200)->header('Content-Type', 'application/pdf');
-            }
-
-            // if ($output === 'excel') {
-            //     return Excel::download(new GenericExport($formatted), 'report.xlsx');
-            // }
-
-            return response()->json(['table' => $formatted]);
-
+        } catch (\JsonException $e) {
+            return response()->json(['error' => 'Invalid JSON from OpenAI'], 500);
         } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Error processing request.',
-                'details' => $e->getMessage(),
-                'raw' => $content,
-            ], 500);
+            return response()->json(['error' => 'Failed to process request', 'details' => $e->getMessage()], 500);
         }
     }
+
 
 }
