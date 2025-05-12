@@ -123,13 +123,19 @@ EOT;
         }
 
         // GROUP BY
-       $group = array_map(fn($col) =>
-    in_array($col, ['item_code', 'item_name']) ? "items.$col" :
-    ($col === 'branch_name' ? "branches.$col" : "item_historys.$col"),
-    $json['columns']
-);
-
-        $sql .= " GROUP BY " . implode(', ', $group);
+        if (!empty($columns)) {
+            $groupBy = [];
+            foreach ($columns as $col) {
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $groupBy[] = "items.$col";
+                } elseif (in_array($col, ['branch_name'])) {
+                    $groupBy[] = "branches.$col";
+                } else {
+                    $groupBy[] = "item_historys.$col";
+                }
+            }
+            $sql .= "GROUP BY " . implode(", ", $groupBy);
+        }
 
 
 
