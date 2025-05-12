@@ -111,7 +111,7 @@ if ($col === 'item_name') {
             $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $field . ") AS value";
             $select[] = $agg;
         } else {
-            $select = ["SUM(item_historys.quantity) AS value"];
+            $select = ["SUM(ABS(item_historys.quantity)) AS value"];
         }
 
         $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
