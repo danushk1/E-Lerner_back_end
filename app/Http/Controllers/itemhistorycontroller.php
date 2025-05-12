@@ -18,8 +18,7 @@ class ItemHistoryController extends Controller
 
         $userQuery = $request->input('query');
 
-        // STEP 1: Prepare system prompt
-         $systemMessage = <<<EOT
+        $systemMessage = <<<EOT
 You are an assistant that converts user queries into structured JSON for chart/report generation.
 Only use these MySQL tables: item_historys, items, branches.
 Ensure all column names are qualified (e.g., item_historys.item_id) to avoid ambiguity.
@@ -58,133 +57,105 @@ EOT;
                 ['role' => 'system', 'content' => $systemMessage],
                 ['role' => 'user', 'content' => $userQuery],
             ],
-
         ]);
 
-       $openAiResponseData = $openAiResponse->json();
-        
-        // Check if there's a valid response
+        $openAiResponseData = $openAiResponse->json();
+
         if (empty($openAiResponseData['choices'])) {
             return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
         }
 
         $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
-        
+
         if (!$structured) {
             return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
         }
 
-        // Decode the structured JSON from OpenAI
-          $json = json_decode($structured, true);
+        $json = json_decode($structured, true);
 
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-        // Prepare the query parts based on OpenAI response
-        $field = "item_historys." . $json['field'];
-        $aggregation = $json['aggregation']['action'] ?? 'sum';
-        $aggAlias = 'value';
-        $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
-        $filters = $json['filters'] ?? [];
+        $select = [];
+        $userColumns = $json['columns'] ?? [];
 
- $select = [];
+        if (!empty($userColumns)) {
+            foreach ($userColumns as $col) {
+                $select[] = match (true) {
+                    in_array($col, ['item_code', 'item_name']) => "items.$col",
+                    $col === 'branch_name' => "branches.$col",
+                    str_starts_with($col, 'items.') => $col,
+                    str_starts_with($col, 'branches.') => $col,
+                    default => "item_historys.$col"
+                };
+            }
+        }
 
-// Determine if user specified any columns
-$userColumns = $json['columns'] ?? [];
+        if (isset($json['aggregation']['action'], $json['aggregation']['field'])) {
+            $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
+            $select[] = $agg;
+        } else {
+            $select = ["SUM(item_historys.quantity) AS value"];
+        }
 
-if (!empty($userColumns)) {
-    foreach ($userColumns as $col) {
-        $select[] = match (true) {
-            in_array($col, ['item_code', 'item_name']) => "items.$col",
-            $col === 'branch_name' => "branches.$col",
-            default => "item_historys.$col"
-        };
-}
-
-// Add aggregation to select
-$agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
-$select[] = $agg;
-} else {
-    // No user-defined columns, only return the aggregation value
-    $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
-    $select = [$agg];
-}
-
-        $sql = "SELECT " . implode(', ', $select) . "
-                FROM item_historys
+        $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
+        $filters = $json['filters'] ?? [];
+        if (!empty($filters)) {
+            $sql .= " WHERE ";
+            $where = [];
+            foreach ($filters as $filter) {
+                $column = match (true) {
+                    in_array($filter['column'], ['item_code', 'item_name']) => "items." . $filter['column'],
+                    $filter['column'] === 'branch_name' => "branches.branch_name",
+                    default => "item_historys." . $filter['column']
+                };
 
-        // Initialize filter condition (to handle dynamic WHERE)
-       $whereClauses = [];
-
-foreach ($filters as $filter) {
-            $column = $filter['column'];
-            $operator = strtolower($filter['operator']);
-            $value = $filter['value'];
-
-            // Avoid double-prefixing
-            if (strpos($column, '.') === false) {
-                if (in_array($column, ['item_code', 'item_name'])) {
-                    $qualifiedColumn = "items.$column";
-                } elseif (in_array($column, ['branch_name', 'address'])) {
-                    $qualifiedColumn = "branches.$column";
+                if ($filter['operator'] === 'between' && is_array($filter['value'])) {
+                    $where[] = "$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
                 } else {
-                    $qualifiedColumn = "item_historys.$column";
-                }
-            } else {
-                $qualifiedColumn = $column;
-            }
-
-            if ($operator === 'between' && is_array($value)) {
-                $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
-            } else {
-                $escapedValue = is_numeric($value) ? $value : "'$value'";
-                $whereClauses[] = "$qualifiedColumn $operator $escapedValue";
-            }
-        }
-
-
-        // If there are filters, append them to the query
-        if (!empty($whereClauses)) {
-            $sql .= " WHERE " . implode(' AND ', $whereClauses);
-        }
-
-        // Apply grouping if necessary
-         if (!empty($json['columns'])) {
-            $groupByCols = [];
-            foreach ($json['columns'] as $col) {
-                if (in_array($col, ['item_code', 'item_name'])) {
-                    $groupByCols[] = "items.$col";
-                } elseif (in_array($col, ['branch_name', 'address'])) {
-                    $groupByCols[] = "branches.$col";
-                } else {
-                    $groupByCols[] = "item_historys.$col";
+                    $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
+                    $where[] = "$column {$filter['operator']} $val";
                 }
             }
-            $sql .= " GROUP BY " . implode(', ', $groupByCols);
+            $sql .= implode(" AND ", $where);
         }
 
-
-        // Execute the raw SQL query
-        try {
-         dd($sql);
-            $results = DB::select($sql);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'error' => 'Failed to process request',
-                'details' => $e->getMessage()
-            ], 500);
+        if (!empty($userColumns)) {
+            $groupCols = [];
+            foreach ($userColumns as $col) {
+                $groupCols[] = match (true) {
+                    in_array($col, ['item_code', 'item_name']) => "items.$col",
+                    $col === 'branch_name' => "branches.$col",
+                    str_starts_with($col, 'items.') => $col,
+                    str_starts_with($col, 'branches.') => $col,
+                    default => "item_historys.$col"
+                };
+            }
+            $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
+dd($sql);
+        $results = DB::select($sql);
+
+        if ($json['output'] === 'pdf') {
+            $pdf = Pdf::loadView('pdf.generic', [
+                'title' => $json['title'] ?? 'Report',
+                'data' => $results
+            ]);
+            return $pdf->download('report.pdf');
+        }
+
+        // if ($json['output'] === 'excel') {
+        //     return Excel::download(new GenericExport($results), 'report.xlsx');
+        // }
 
         return response()->json([
-            'title' => $json['title'] ?? 'Report',
-            'chart_type' => $json['chart_type'] ?? 'pie', // Default to pie chart
-            'data' => $results,
-            'colors' => ['#3B82F6', '#EF4444', '#FACC15', '#8B5CF6'] // Blue, red, yellow, purple
+            'title' => $json['title'] ?? 'Chart',
+            'chart_type' => $json['chart_type'] ?? 'bar',
+            'data' => $results
         ]);
     }
 }
