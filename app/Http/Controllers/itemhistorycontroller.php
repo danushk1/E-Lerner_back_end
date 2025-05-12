@@ -81,73 +81,45 @@ EOT;
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-        // Prepare the query parts based on OpenAI response
-    $select = [];
+       $select = [];
         foreach ($json['columns'] as $col) {
-            if (str_contains($col, '.')) {
-                $select[] = $col;
-            } elseif (in_array($col, ['item_code', 'item_name'])) {
-                $select[] = "items.$col";
-            } elseif (in_array($col, ['branch_name', 'address'])) {
-                $select[] = "branches.$col";
-            } else {
-                $select[] = "item_historys.$col";
-            }
+            $select[] = match (true) {
+                in_array($col, ['item_code', 'item_name']) => "items.$col",
+                $col === 'branch_name' => "branches.$col",
+                default => "item_historys.$col"
+            };
         }
 
-        // Add aggregation
+        // Aggregation
         $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
         $select[] = $agg;
-        $sql = "SELECT " . implode(', ', $select) . "
-                FROM item_historys
+
+        $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
+        // Filters
+        $filters = $json['filters'] ?? [];
+        if (!empty($filters)) {
+            $sql .= " WHERE ";
+            $where = [];
+            foreach ($filters as $filter) {
+                $column = match (true) {
+                    in_array($filter['column'], ['item_code', 'item_name']) => "items." . $filter['column'],
+                    $filter['column'] === 'branch_name' => "branches.branch_name",
+                    default => "item_historys." . $filter['column']
+                };
 
-        // Initialize filter condition (to handle dynamic WHERE)
-     $filterCount = 0;
-        foreach ($json['filters'] ?? [] as $filter) {
-            $column = $filter['column'];
-            $operator = strtolower($filter['operator']);
-            $value = $filter['value'];
-
-            if ($filterCount === 0) {
-                $sql .= " WHERE ";
-            } else {
-                $sql .= " AND ";
-            }
-
-            if (in_array($column, ['item_code', 'item_name'])) {
-                $column = "items.$column";
-            } elseif (in_array($column, ['branch_name', 'address'])) {
-                $column = "branches.$column";
-            } else {
-                $column = "item_historys.$column";
-            }
-
-            if ($operator === 'between' && is_array($value)) {
-                $sql .= "$column BETWEEN '{$value[0]}' AND '{$value[1]}' ";
-            } else {
-                $sql .= "$column $operator '$value' ";
-            }
-
-            $filterCount++;
-        }
-
-        // Apply grouping if necessary
-         if (!empty($json['columns'])) {
-            $groupByCols = [];
-            foreach ($json['columns'] as $col) {
-                if (in_array($col, ['item_code', 'item_name'])) {
-                    $groupByCols[] = "items.$col";
-                } elseif (in_array($col, ['branch_name', 'address'])) {
-                    $groupByCols[] = "branches.$col";
+                if ($filter['operator'] === 'between' && is_array($filter['value'])) {
+                    $where[] = "$column BETWEEN {$filter['value'][0]} AND {$filter['value'][1]}";
                 } else {
-                    $groupByCols[] = "item_historys.$col";
+                    $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
+                    $where[] = "$column {$filter['operator']} $val";
                 }
             }
-            $sql .= " GROUP BY " . implode(', ', $groupByCols);
+            $sql .= implode(" AND ", $where);
         }
+
 
 dd($sql);
         // Execute the raw SQL query
