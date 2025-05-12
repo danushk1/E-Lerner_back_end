@@ -83,55 +83,41 @@ EOT;
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
 
-  $query = "SELECT ";
-
-        // Add Aggregation (sum, count, etc.)
-        $field = "item_historys." . $json['field'];
+   $field = "item_historys." . $json['field'];
         $aggregation = $json['aggregation']['action'] ?? 'sum';
         $aggAlias = 'value';
+        $groupBy = $json['group_by'] ? "item_historys." . $json['group_by'] : null;
+        $filters = $json['filters'] ?? [];
 
-        if (!empty($json['group_by'])) {
-            $groupBy = "item_historys." . $json['group_by'];
-            $query .= "$groupBy, $aggregation($field) as $aggAlias ";
-            $query .= "FROM item_historys ";
-            $query .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
-            $query .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
-            $query .= "GROUP BY $groupBy ";
-        } else {
-            $query .= "$field, $aggregation($field) as $aggAlias ";
-            $query .= "FROM item_historys ";
-            $query .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
-            $query .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
-        }
+        // Start building the base query
+        $sql = "SELECT item_historys.item_id, items.item_code, items.item_name, SUM(item_historys.quantity) AS $aggAlias
+                FROM item_historys
+                LEFT JOIN items ON item_historys.item_id = items.item_id
+                LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        // Step 6: Apply filters if any
-        if (!empty($json['filters'])) {
-            foreach ($json['filters'] as $filter) {
+        // Apply filters (where clauses)
+        if (!empty($filters)) {
+            foreach ($filters as $filter) {
                 $column = $filter['column'];
                 $operator = $filter['operator'];
                 $value = $filter['value'];
 
-                $qualified = "item_historys.$column";
                 if ($operator === 'between') {
-                    $query .= "WHERE $qualified BETWEEN '$value[0]' AND '$value[1]' ";
+                    $sql .= " WHERE item_historys.$column BETWEEN '$value[0]' AND '$value[1]'";
                 } else {
-                    $query .= "WHERE $qualified $operator '$value' ";
+                    $sql .= " WHERE item_historys.$column $operator '$value'";
                 }
             }
         }
 
-        // Step 7: Add columns if specified
-        if (!empty($json['columns'])) {
-            $selects = [];
-            foreach ($json['columns'] as $col) {
-                $selects[] = "item_historys.$col";
-            }
-            $query .= "SELECT " . implode(", ", $selects) . " ";
+        // Apply grouping if necessary
+        if ($groupBy) {
+            $sql .= " GROUP BY item_historys.item_id, items.item_code, items.item_name";
         }
 
         // Execute the raw SQL query
         try {
-dd($query);
+dd($sql);
             $results = DB::select(DB::raw($query));
 
         } catch (\Exception $e) {
