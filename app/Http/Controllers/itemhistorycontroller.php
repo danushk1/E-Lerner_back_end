@@ -75,72 +75,79 @@ EOT;
             return response()->json(['error' => 'Invalid JSON structure from OpenAI'], 422);
         }
            // Build SELECT clause
-              // SQL SELECT
-        $selectCols = [];
-        $groupByCols = [];
-
-        if (!empty($json['columns'])) {
-            foreach ($json['columns'] as $col) {
-                if (str_contains($col, 'item_')) {
-                    $selectCols[] = "items.$col";
-                    $groupByCols[] = "items.$col";
-                } elseif (str_contains($col, 'branch_')) {
-                    $selectCols[] = "branches.$col";
-                    $groupByCols[] = "branches.$col";
+        $selectColumns = [];
+        foreach ($json['columns'] as $col) {
+            if (str_contains($col, '.')) {
+                $selectColumns[] = $col;
+            } else {
+                // infer table
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $selectColumns[] = "items.$col";
+                } elseif (in_array($col, ['branch_name', 'address'])) {
+                    $selectColumns[] = "branches.$col";
                 } else {
-                    $selectCols[] = "item_historys.$col";
-                    $groupByCols[] = "item_historys.$col";
+                    $selectColumns[] = "item_historys.$col";
                 }
             }
-        } else {
-            $selectCols[] = "item_historys.item_id";
-            $selectCols[] = "items.item_code";
-            $selectCols[] = "items.item_name";
-            $groupByCols = $selectCols;
         }
 
         // Add aggregation
-        $aggField = $json['aggregation']['field'];
-        $aggAction = strtoupper($json['aggregation']['action']);
-        $selectCols[] = "$aggAction(item_historys.$aggField) AS value";
+        $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $json['aggregation']['field'] . ") AS value";
+        $select[] = $agg;
 
-        $sql = "SELECT " . implode(", ", $selectCols) . " FROM item_historys
+        $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-        // WHERE Filters
-        $where = [];
+
+        // Apply filters
+        $filterCount = 0;
         foreach ($json['filters'] ?? [] as $filter) {
             $column = $filter['column'];
             $operator = strtolower($filter['operator']);
             $value = $filter['value'];
 
-            if (str_contains($column, 'item_')) {
-                $qualified = "items.$column";
-            } elseif (str_contains($column, 'branch_')) {
-                $qualified = "branches.$column";
+            if ($filterCount === 0) {
+                $sql .= "WHERE ";
             } else {
-                $qualified = "item_historys.$column";
+                $sql .= "AND ";
+            }
+
+            if (in_array($column, ['item_code', 'item_name'])) {
+                $column = "items.$column";
+            } elseif (in_array($column, ['branch_name', 'address'])) {
+                $column = "branches.$column";
+            } else {
+                $column = "item_historys.$column";
             }
 
             if ($operator === 'between' && is_array($value)) {
-                $where[] = "$qualified BETWEEN '{$value[0]}' AND '{$value[1]}'";
+                $sql .= "$column BETWEEN '{$value[0]}' AND '{$value[1]}' ";
             } else {
-                $where[] = "$qualified $operator " . DB::getPdo()->quote($value);
+                $sql .= "$column $operator '$value' ";
             }
-        }
 
-        if (!empty($where)) {
-            $sql .= " WHERE " . implode(" AND ", $where);
+            $filterCount++;
         }
 
         // GROUP BY
-        if (!empty($groupByCols)) {
-            $sql .= " GROUP BY " . implode(", ", $groupByCols);
+        if (!empty($json['columns'])) {
+            $groupByCols = [];
+            foreach ($json['columns'] as $col) {
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $groupByCols[] = "items.$col";
+                } elseif (in_array($col, ['branch_name', 'address'])) {
+                    $groupByCols[] = "branches.$col";
+                } else {
+                    $groupByCols[] = "item_historys.$col";
+                }
+            }
+            $sql .= "  GROUP BY " . implode(', ', $groupByCols);
         }
 
-
-       dd($sql);
+dd($sql);
+        // Apply grouping if necessary
+       
         // Execute the raw SQL query
         try {
          
