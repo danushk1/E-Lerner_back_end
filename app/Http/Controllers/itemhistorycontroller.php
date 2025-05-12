@@ -95,6 +95,12 @@ foreach ($userColumns as $col) {
         str_starts_with($col, 'branches.') => $col,
         default => "$col"
     };
+
+if ($col === 'item_name') {
+                $nameKey = 'name';
+            } elseif ($col === 'branch_name') {
+                $nameKey = 'name';
+            }
 }
 
 
@@ -148,6 +154,14 @@ foreach ($userColumns as $col) {
 
         $results = DB::select($sql);
 
+       $results = array_map(function ($item) {
+            $itemArray = (array) $item;
+            if (isset($itemArray['value'])) {
+                $itemArray['value'] = (float) $itemArray['value'];
+            }
+            return $itemArray;
+        }, $results);
+
         if ($json['output'] === 'pdf') {
             $pdf = Pdf::loadView('pdf.generic', [
                 'title' => $json['title'] ?? 'Report',
@@ -156,13 +170,12 @@ foreach ($userColumns as $col) {
             return $pdf->download('report.pdf');
         }
 
-        // if ($json['output'] === 'excel') {
-        //     return Excel::download(new GenericExport($results), 'report.xlsx');
-        // }
+       
 
         return response()->json([
             'title' => $json['title'] ?? 'Chart',
             'chart_type' => $json['chart_type'] ?? 'bar',
+            'nameKey' => $nameKey,
             'valueKey' => 'value',
             'colors' => ['#8884d8', '#82ca9d', '#ffc658'],
             'data' => $results
