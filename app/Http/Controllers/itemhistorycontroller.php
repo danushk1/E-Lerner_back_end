@@ -101,7 +101,7 @@ foreach ($filters as $filter) {
     $column = $filter['column'];
     $operator = strtolower($filter['operator']);
     $value = $filter['value'];
-
+dump($filter);
     // Determine correct table prefix
     if (in_array($column, ['item_code', 'item_name'])) {
         $qualifiedColumn = "items.$column";
