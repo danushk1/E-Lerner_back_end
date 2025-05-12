@@ -132,8 +132,9 @@ EOT;
 
         // Execute the raw SQL query
         try {
+dd($query);
             $results = DB::select(DB::raw($query));
-dd($results);
+
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to process request',
