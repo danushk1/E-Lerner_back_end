@@ -133,7 +133,7 @@ EOT;
 
 
 
-       
+       dd($sql);
         // Execute the raw SQL query
         try {
          
