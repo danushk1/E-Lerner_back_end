@@ -49,6 +49,10 @@ You can join:
 - `items.item_id` to get `item_code`, `item_Name`
 - `branches.branch_id` to get `branch_name`, `address`
 
+Only valid columns from:
+- item_historys: external_number, branch_id, location_id, document_number, transaction_date, description, item_id, quantity, free_quantity, batch_number, whole_sale_price, retial_price, expire_date, cost_price
+- items: item_code, item_name
+- branches: branch_name, address
 Do not include explanation. Return only a single valid JSON object.
 EOT;
 
@@ -61,91 +65,86 @@ EOT;
 
         ]);
 
-       $openAiResponseData = $openAiResponse->json();
-        
-        // Check if there's a valid response
-        if (empty($openAiResponseData['choices'])) {
-            return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
+       $responseData = $openAiResponse->json();
+        if (empty($responseData['choices'][0]['message']['content'])) {
+            return response()->json(['error' => 'Invalid response from OpenAI'], 422);
         }
 
-        $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
-        
-        if (!$structured) {
-            return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
+        $json = json_decode($responseData['choices'][0]['message']['content'], true);
+        if (!$json || !isset($json['columns']) || !isset($json['aggregation'])) {
+            return response()->json(['error' => 'Invalid JSON structure from OpenAI'], 422);
         }
-
-        // Decode the structured JSON from OpenAI
-          $json = json_decode($structured, true);
-
-        if (!isset($json['action']) || !isset($json['field'])) {
-            return response()->json(['error' => 'Missing required fields in response.'], 422);
-        }
-
-        // Set aggregation
-        $aggregation = $json['aggregation']['action'] ?? 'sum';
-        $aggField = $json['aggregation']['field'] ?? 'quantity';
-        $aggAlias = 'value';
-
-        $columns = [];
-        $userColumns = $json['columns'] ?? ['item_id', 'item_name', 'item_code', 'external_number', 'branch_name', 'quantity'];
-
-        foreach ($userColumns as $col) {
-            if (in_array($col, ['item_code', 'item_name'])) {
-                $columns[] = "items.$col";
-            } elseif ($col === 'branch_name') {
-                $columns[] = "branches.$col";
+           // Build SELECT clause
+        $selectColumns = [];
+        foreach ($json['columns'] as $col) {
+            if (str_contains($col, '.')) {
+                $selectColumns[] = $col;
             } else {
-                $columns[] = "item_historys.$col";
+                // infer table
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $selectColumns[] = "items.$col";
+                } elseif (in_array($col, ['branch_name', 'address'])) {
+                    $selectColumns[] = "branches.$col";
+                } else {
+                    $selectColumns[] = "item_historys.$col";
+                }
             }
         }
 
-        $columns[] = strtoupper($aggregation) . "(item_historys.$aggField) AS $aggAlias";
+        // Add aggregation
+        $aggregation = $json['aggregation'];
+        $aggregationClause = strtoupper($aggregation['action']) . "(item_historys." . $aggregation['field'] . ") AS value";
+        $selectColumns[] = $aggregationClause;
 
-        $sql = "SELECT " . implode(', ', $columns) . " FROM item_historys ";
+        // Start SQL
+        $sql = "SELECT " . implode(', ', $selectColumns) . " FROM item_historys ";
         $sql .= "LEFT JOIN items ON item_historys.item_id = items.item_id ";
         $sql .= "LEFT JOIN branches ON item_historys.branch_id = branches.branch_id ";
 
+        // Apply filters
+        $filterCount = 0;
+        foreach ($json['filters'] ?? [] as $filter) {
+            $column = $filter['column'];
+            $operator = strtolower($filter['operator']);
+            $value = $filter['value'];
 
-        // Initialize filter condition (to handle dynamic WHERE)
+            if ($filterCount === 0) {
+                $sql .= "WHERE ";
+            } else {
+                $sql .= "AND ";
+            }
 
+            if (in_array($column, ['item_code', 'item_name'])) {
+                $column = "items.$column";
+            } elseif (in_array($column, ['branch_name', 'address'])) {
+                $column = "branches.$column";
+            } else {
+                $column = "item_historys.$column";
+            }
 
-       $filters = $json['filters'] ?? [];
-        if (!empty($filters)) {
-            $sql .= "WHERE ";
-            $filterStrings = [];
-            foreach ($filters as $filter) {
-                $column = $filter['column'];
-                $operator = $filter['operator'];
-                $value = $filter['value'];
+            if ($operator === 'between' && is_array($value)) {
+                $sql .= "$column BETWEEN '{$value[0]}' AND '{$value[1]}' ";
+            } else {
+                $sql .= "$column $operator '$value' ";
+            }
 
-                $qualifiedColumn = match(true) {
-                    in_array($column, ['item_code', 'item_name']) => "items.$column",
-                    $column === 'branch_name' => "branches.$column",
-                    default => "item_historys.$column"
-                };
+            $filterCount++;
+        }
 
-                if ($operator === 'between' && is_array($value)) {
-                    $filterStrings[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
+        // GROUP BY
+        if (!empty($json['columns'])) {
+            $groupByCols = [];
+            foreach ($json['columns'] as $col) {
+                if (in_array($col, ['item_code', 'item_name'])) {
+                    $groupByCols[] = "items.$col";
+                } elseif (in_array($col, ['branch_name', 'address'])) {
+                    $groupByCols[] = "branches.$col";
                 } else {
-                    $filterStrings[] = "$qualifiedColumn $operator '$value'";
+                    $groupByCols[] = "item_historys.$col";
                 }
             }
-            $sql .= implode(' AND ', $filterStrings) . ' ';
+            $sql .= "GROUP BY " . implode(', ', $groupByCols);
         }
-
-        // Group By
-        $groupBy = [];
-        foreach ($userColumns as $col) {
-            if (in_array($col, ['item_code', 'item_name'])) {
-                $groupBy[] = "items.$col";
-            } elseif ($col === 'branch_name') {
-                $groupBy[] = "branches.$col";
-            } else {
-                $groupBy[] = "item_historys.$col";
-            }
-        }
-        $sql .= "GROUP BY " . implode(', ', $groupBy);
-
 
 dd($sql);
         // Apply grouping if necessary
