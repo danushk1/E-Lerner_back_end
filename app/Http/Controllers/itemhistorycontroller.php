@@ -48,7 +48,7 @@ You can join:
 Do not include explanation. Return only a single valid JSON object.
 EOT;
 
-try {
+
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.openai.com/v1/chat/completions', [
             'model' => 'gpt-4',
             'messages' => [
@@ -58,74 +58,72 @@ try {
 
         ]);
 
-         $content = $openAiResponse->json();
-            $responseJson = json_decode($content['choices'][0]['message']['content'], true);
+     $structured = $openAiResponse->json('choices.0.message.content');
+        $json = json_decode($structured, true);
 
-            if (!$responseJson) {
-                return response()->json(['error' => 'Invalid response from OpenAI'], 422);
-            }
+        if (!isset($json['action']) || !isset($json['field'])) {
+            return response()->json(['error' => 'Invalid response from OpenAI'], 422);
+        }
 
-            // Step 2: Build query
-            $query = DB::table('item_historys')
-                ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
-                ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
+        // Start query
+        $query = DB::table('item_historys')
+            ->leftJoin('items', 'item_historys.item_id', '=', 'items.item_id')
+            ->leftJoin('branches', 'item_historys.branch_id', '=', 'branches.branch_id');
 
-            // Select columns
-            if (!empty($responseJson['columns'])) {
-                $selects = [];
-                foreach ($responseJson['columns'] as $col) {
-                    if (in_array($col, ['item_id', 'branch_id'])) {
-                        $selects[] = "item_historys.$col";
-                    } else {
-                        $selects[] = "item_historys.$col";
-                    }
-                }
-                $query->addSelect(DB::raw(implode(',', $selects)));
-            }
+        // Apply filters
+        if (!empty($json['filters'])) {
+            foreach ($json['filters'] as $filter) {
+                $column = $filter['column'];
+                $operator = $filter['operator'];
+                $value = $filter['value'];
 
-            // Aggregation
-            if (!empty($responseJson['aggregation'])) {
-                $agg = $responseJson['aggregation'];
-                $query->addSelect(DB::raw("{$agg['action']}(item_historys.{$agg['field']}) as value"));
-            }
-
-            // Group By
-            if (!empty($responseJson['group_by'])) {
-                $query->groupBy("item_historys." . $responseJson['group_by']);
-                $query->addSelect("item_historys." . $responseJson['group_by']);
-            }
-
-            // Filters
-            if (!empty($responseJson['filters'])) {
-                foreach ($responseJson['filters'] as $filter) {
-                    $column = "item_historys." . $filter['column'];
-                    $operator = $filter['operator'];
-                    $value = $filter['value'];
-
-                    if ($operator === 'between') {
-                        $query->whereBetween($column, $value);
-                    } else {
-                        $query->where($column, $operator, $value);
-                    }
+                $qualified = "item_historys.$column";
+                if ($operator === 'between') {
+                    $query->whereBetween($qualified, $value);
+                } else {
+                    $query->where($qualified, $operator, $value);
                 }
             }
+        }
 
-            // Step 3: Execute query
+        // Select + Aggregation
+        $field = "item_historys." . $json['field'];
+        $aggregation = $json['aggregation']['action'] ?? 'sum';
+        $aggAlias = 'value';
+
+        if (!empty($json['group_by'])) {
+            $groupBy = "item_historys." . $json['group_by'];
+            $query->select($groupBy, DB::raw("$aggregation($field) as $aggAlias"))
+                  ->groupBy($groupBy);
+        } else {
+            $query->select($field, DB::raw("$aggregation($field) as $aggAlias"));
+        }
+
+        // Columns (optional)
+        if (!empty($json['columns'])) {
+            $selects = [];
+            foreach ($json['columns'] as $col) {
+                $selects[] = "item_historys.$col";
+            }
+            $query->addSelect($selects);
+        }
+
+        try {
             $results = $query->get();
-
-            return response()->json([
-                'type' => $responseJson['output'],
-                'title' => $responseJson['title'],
-                'chart_type' => $responseJson['chart_type'],
-                'data' => $results
-            ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'error' => 'Failed to process request',
                 'details' => $e->getMessage()
             ], 500);
         }
+
+        return response()->json([
+            'title' => $json['title'] ?? 'Report',
+            'chart_type' => $json['chart_type'] ?? 'bar',
+            'data' => $results,
+            'colors' => ['#3B82F6', '#EF4444', '#FACC15', '#8B5CF6'] // blue, red, yellow, purple
+        ]);
     }
 }
+
 
