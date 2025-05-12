@@ -123,11 +123,12 @@ EOT;
         }
 
         // GROUP BY
-        $group = array_map(fn($col) =>
-            in_array($col, ['item_code', 'item_name']) ? "items.$col" :
-            ($col === 'branch_name' ? "branches.$col" : "item_historys.$col"),
-            $json['columns']
-        );
+       $group = array_map(fn($col) =>
+    in_array($col, ['item_code', 'item_name']) ? "items.$col" :
+    ($col === 'branch_name' ? "branches.$col" : "item_historys.$col"),
+    $json['columns']
+);
+
         $sql .= " GROUP BY " . implode(', ', $group);
 
 
