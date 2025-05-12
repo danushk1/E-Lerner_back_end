@@ -95,21 +95,31 @@ EOT;
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
         // Initialize filter condition (to handle dynamic WHERE)
-        $whereClauses = [];
+       $whereClauses = [];
 
-        // Apply filters dynamically based on user input
-        foreach ($filters as $filter) {
-            $column = $filter['column'];
-            $operator = $filter['operator'];
-            $value = $filter['value'];
+foreach ($filters as $filter) {
+    $column = $filter['column'];
+    $operator = strtolower($filter['operator']);
+    $value = $filter['value'];
 
-            // Handling 'BETWEEN' operator as an array of values
-            if ($operator === 'between') {
-                $whereClauses[] = "item_historys.$column BETWEEN $value[0] AND $value[1]";
-            } else {
-                $whereClauses[] = "item_historys.$column $operator '$value'";
-            }
-        }
+    // Determine correct table prefix
+    if (in_array($column, ['item_code', 'item_name'])) {
+        $qualifiedColumn = "items.$column";
+    } elseif (in_array($column, ['branch_name', 'address'])) {
+        $qualifiedColumn = "branches.$column";
+    } else {
+        $qualifiedColumn = "item_historys.$column";
+    }
+
+    // Apply filter logic
+    if ($operator === 'between' && is_array($value) && count($value) === 2) {
+        $whereClauses[] = "$qualifiedColumn BETWEEN '{$value[0]}' AND '{$value[1]}'";
+    } else {
+        $escapedValue = is_string($value) ? addslashes($value) : $value;
+        $whereClauses[] = "$qualifiedColumn $operator '$escapedValue'";
+    }
+}
+
 
         // If there are filters, append them to the query
         if (!empty($whereClauses)) {
