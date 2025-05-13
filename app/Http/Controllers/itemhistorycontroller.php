@@ -154,16 +154,31 @@ if ($col === 'item_name') {
         }
 
         $results = DB::select($sql);
+ $results = array_map(function ($item) {
+            $itemArray = (array)$item;
+            if (isset($itemArray['value'])) {
+                $itemArray['value'] = (float)$itemArray['value'];
+            }
+            return $itemArray;
+        }, $results);
 
-        $formatted = array_map(fn($r) => ['name' => $r->$userColumns[0] ?? 'Unknown', 'value' => (float)($r->value ?? 0)], $results);
+        if ($json['output'] === 'pdf') {
+            $pdf = Pdf::loadView('pdf.generic', [
+                'title' => $json['title'] ?? 'Report',
+                'data' => $results
+            ]);
+            return $pdf->download('report.pdf');
+        }
+
+       
 
         return response()->json([
             'title' => $json['title'] ?? 'Chart',
             'chart_type' => $json['chart_type'] ?? 'bar',
-            'nameKey' => 'name',
+            'nameKey' => $nameKey,
             'valueKey' => 'value',
             'colors' => ['#8884d8', '#82ca9d', '#ffc658'],
-            'data' => $formatted
+            'data' => $results
         ]);
     }
 }
