@@ -90,13 +90,14 @@ foreach ($userColumns as $col) {
     }
 
     // Add fields from items, branches, or item_historys to select
-    $select[] = match (true) {
-        in_array($col, ['item_code', 'item_name']) => "items.$col",
-        $col === 'branch_name' => "branches.$col",
-        str_starts_with($col, 'items.') => $col,
-        str_starts_with($col, 'branches.') => $col,
-        default => "$col"
-    };
+   $select[] = match (true) {
+    in_array($col, ['item_code', 'item_name']) => "items.$col",
+    $col === 'branch_name' => "branches.$col",
+    str_starts_with($col, 'items.') => $col,
+    str_starts_with($col, 'branches.') => $col,
+    default => "item_historys.$col" // ✅ qualified
+};
+
 
 if ($col === 'item_name') {
                 $nameKey = 'name';
