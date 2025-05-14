@@ -153,7 +153,7 @@ if ($col === 'item_name') {
             }
             $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
-dd($sql);
+
         $results = DB::select($sql);
  return response()->json([
     'type' => $json['output'],            // chart, pdf, excel, table
