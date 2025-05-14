@@ -131,7 +131,7 @@ if ($col === 'item_name') {
                 };
 
                 if ($filter['operator'] === 'between' && is_array($filter['value'])) {
-                    $where[] = "item_historys.$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
+                    $where[] = "$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
                 } else {
                     $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
                     $where[] = "$column {$filter['operator']} $val";
@@ -153,7 +153,7 @@ if ($col === 'item_name') {
             }
             $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
-dd($sql);
+
         $results = DB::select($sql);
  return response()->json([
     'type' => $json['output'],            // chart, pdf, excel, table
