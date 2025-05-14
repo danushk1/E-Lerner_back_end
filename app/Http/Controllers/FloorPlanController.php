@@ -131,7 +131,7 @@ if ($col === 'item_name') {
                 };
 
                 if ($filter['operator'] === 'between' && is_array($filter['value'])) {
-                    $where[] = "$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
+                    $where[] = "item_historys.$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
                 } else {
                     $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
                     $where[] = "$column {$filter['operator']} $val";
