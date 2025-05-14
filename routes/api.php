@@ -4,6 +4,7 @@ use App\Events\NotificationEvent;
 use App\Http\Controllers\Api\OpenAIController;
 use App\Http\Controllers\ChartAssistantController;
 use App\Http\Controllers\EmbeddingController;
+use App\Http\Controllers\FloorPlanController;
 use App\Http\Controllers\itemhistorycontroller;
 use App\Http\Controllers\MyCoursessController;
 use App\Http\Controllers\SubjectController;
@@ -40,3 +41,6 @@ Route::get('/embedding/subject', [SubjectEmbeddingController::class, 'generate']
 Route::post('/search/subjects', [SubjectSearchController::class, 'search']);
 //Route::post('/chart/generate', [ChartAssistantController::class, 'generate']);
 Route::post('/chart/generate', [itemhistorycontroller::class, 'generate']);
+
+// routes/api.php
+Route::post('/generate-floorplan', [FloorPlanController::class, 'generate']);
