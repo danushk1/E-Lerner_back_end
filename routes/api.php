@@ -43,4 +43,4 @@ Route::post('/search/subjects', [SubjectSearchController::class, 'search']);
 Route::post('/chart/generate', [itemhistorycontroller::class, 'generate']);
 
 // routes/api.php
-Route::post('/generate-floorplan', [FloorPlanController::class, 'generate']);
+Route::post('/admin_dashboard', [FloorPlanController::class, 'generate']);
