@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Http;
 
 class FloorPlanController extends Controller
 {
- public function generateFloorPlan(Request $request)
+ public function generate(Request $request)
 {
     try {
         $response = Http::withToken(env('OPENAI_API_KEY'))
