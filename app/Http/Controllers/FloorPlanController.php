@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Maatwebsite\Excel\Facades\Excel;
 use App\Exports\GenericExport;
+use Carbon\Carbon;
 
 class FloorPlanController extends Controller
 {
@@ -60,12 +61,14 @@ EOT;
             ],
         ]);
 
+        // Decode the OpenAI response
         $openAiResponseData = $openAiResponse->json();
 
         if (empty($openAiResponseData['choices'])) {
             return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
         }
 
+        // Extract the structured response
         $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
 
         if (!$structured) {
@@ -74,6 +77,7 @@ EOT;
 
         $json = json_decode($structured, true);
 
+        // Check for required fields
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
@@ -81,46 +85,41 @@ EOT;
         $select = [];
         $userColumns = $json['columns'] ?? [];
 
+        // Dynamically build SELECT based on user query
         $select = [];
-$nameKey = 'name';
-foreach ($userColumns as $col) {
-    // Skip raw quantity unless explicitly grouped
-    if ($col === 'quantity') {
-        continue; // Don't add quantity to select if we're aggregating it
-    }
-
-    // Add fields from items, branches, or item_historys to select
-   $select[] = match (true) {
-    in_array($col, ['item_code', 'item_name']) => "items.$col",
-    $col === 'branch_name' => "branches.$col",
-    str_starts_with($col, 'items.') => $col,
-    str_starts_with($col, 'branches.') => $col,
-    default => "item_historys.$col" // ✅ qualified
-};
-
-
-if ($col === 'item_name') {
-                $nameKey = 'name';
-            } elseif ($col === 'branch_name') {
-                $nameKey = 'name';
+        foreach ($userColumns as $col) {
+            if ($col === 'quantity') {
+                continue;
             }
-}
 
-
-
-        if (isset($json['aggregation']['action'], $json['aggregation']['field'])) {
-             $field = str_replace(['item_historys.', 'items.', 'branches.'], '', $json['aggregation']['field']);
-            $agg = strtoupper($json['aggregation']['action']) . "(item_historys." . $field . ") AS value";
-            $select[] = $agg;
-        } else {
-            $select = ["SUM(ABS(item_historys.quantity)) AS value"];
+            $select[] = match (true) {
+                in_array($col, ['item_code', 'item_name']) => "items.$col",
+                $col === 'branch_name' => "branches.$col",
+                str_starts_with($col, 'items.') => $col,
+                str_starts_with($col, 'branches.') => $col,
+                default => "$col"
+            };
         }
 
+        // Aggregation logic
+        if (isset($json['aggregation']['action'], $json['aggregation']['field'])) {
+            $field = $json['aggregation']['field'];
+            if (!str_contains($field, '.')) {
+                $field = "item_historys.$field";
+            }
+            $agg = strtoupper($json['aggregation']['action']) . "($field) AS value";
+            $select[] = $agg;
+        } else {
+            $select[] = "SUM(ABS(item_historys.quantity)) AS value";
+        }
+
+        // Build the SQL query
         $sql = "SELECT " . implode(', ', $select) . " FROM item_historys
                 LEFT JOIN items ON item_historys.item_id = items.item_id
                 LEFT JOIN branches ON item_historys.branch_id = branches.branch_id";
 
-     $filters = $json['filters'] ?? [];
+        // Handle date range filters
+        $filters = $json['filters'] ?? [];
         if (!empty($filters)) {
             $sql .= " WHERE ";
             $where = [];
@@ -128,11 +127,14 @@ if ($col === 'item_name') {
                 $column = match (true) {
                     in_array($filter['column'], ['item_code', 'item_name']) => "items." . $filter['column'],
                     $filter['column'] === 'branch_name' => "branches.branch_name",
-                    default =>  $filter['column']
+                    default => $filter['column']
                 };
 
+                // Handle between operator for dates
                 if ($filter['operator'] === 'between' && is_array($filter['value'])) {
-                    $where[] = "$column BETWEEN '{$filter['value'][0]}' AND '{$filter['value'][1]}'";
+                    $startDate = $filter['value'][0] === 'start_of_day' ? Carbon::now()->startOfDay()->toDateTimeString() : $filter['value'][0];
+                    $endDate = $filter['value'][1] === 'end_of_day' ? Carbon::now()->endOfDay()->toDateTimeString() : $filter['value'][1];
+                    $where[] = "$column BETWEEN '$startDate' AND '$endDate'";
                 } else {
                     $val = is_numeric($filter['value']) ? $filter['value'] : "'{$filter['value']}'";
                     $where[] = "$column {$filter['operator']} $val";
@@ -141,6 +143,7 @@ if ($col === 'item_name') {
             $sql .= implode(" AND ", $where);
         }
 
+        // Grouping
         if (!empty($userColumns)) {
             $groupCols = [];
             foreach ($userColumns as $col) {
@@ -155,19 +158,9 @@ if ($col === 'item_name') {
             $sql .= " GROUP BY " . implode(', ', $groupCols);
         }
 
+        // Get the results from the database
         $results = DB::select($sql);
- return response()->json([
-    'type' => $json['output'],            // chart, pdf, excel, table
-    'title' => $json['title'] ?? null,
-    'chart_type' => $json['chart_type'] ?? null,
-    'data' => $results,
-    'columns' => $userColumns,
-    'group_by' => $json['group_by'] ?? null,
-    'aggregation' => $json['aggregation'] ?? null,
-]);
 
-
-       
-
+        return response()->json(['data' => $results, 'title' => $json['title'] ?? 'Stock Report']);
     }
 }
