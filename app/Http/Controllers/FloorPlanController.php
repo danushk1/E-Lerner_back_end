@@ -59,6 +59,8 @@ EOT;
                 ['role' => 'user', 'content' => $userQuery],
             ],
         ]);
+
+dd($openAiResponse);
 if ($openAiResponse->failed()) {
             return response()->json([
                 'error' => 'DeepSeek API request failed',
