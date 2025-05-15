@@ -84,7 +84,17 @@ if ($openAiResponse->failed()) {
             return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
         }
 
-        $json = json_decode($structured, true);
+       if (str_starts_with($structured, '```json')) {
+    $structured = substr($structured, 7);
+}
+if (str_ends_with($structured, '```')) {
+    $structured = substr($structured, 0, -3);
+}
+
+// Final cleanup
+$structured = trim($structured, " \t\n\r\0\x0B`");
+
+$json = json_decode($structured, true);
 dd($json);
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
