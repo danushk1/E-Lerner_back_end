@@ -59,12 +59,22 @@ EOT;
                 ['role' => 'user', 'content' => $userQuery],
             ],
         ]);
-
+if ($openAiResponse->failed()) {
+            return response()->json([
+                'error' => 'DeepSeek API request failed',
+                'status' => $openAiResponse->status(),
+                'response' => $openAiResponse->json()
+            ], 422);
+        }
         $openAiResponseData = $openAiResponse->json();
 
-        if (empty($openAiResponseData['choices'])) {
-            return response()->json(['error' => 'Invalid response from OpenAI', 'details' => $openAiResponseData], 422);
+       if (!isset($openAiResponseData['choices'][0]['message']['content'])) {
+            return response()->json([
+                'error' => 'Invalid response structure from DeepSeek',
+                'response' => $openAiResponseData
+            ], 422);
         }
+
 
         $structured = $openAiResponseData['choices'][0]['message']['content'] ?? null;
 
