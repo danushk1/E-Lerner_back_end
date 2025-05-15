@@ -51,7 +51,7 @@ You can join:
 
 Do not include explanation. Return only a single valid JSON object.
 EOT;
-dd(env('OPENAI_API_KEY'));
+
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.deepseek.com/v1/chat/completions', [
             'model' => 'deepseek-chat',
             'messages' => [
