@@ -53,7 +53,7 @@ Do not include explanation. Return only a single valid JSON object.
 EOT;
 
         $openAiResponse = Http::withToken(env('OPENAI_API_KEY'))->post('https://api.deepseek.com/v1/chat/completions', [
-            'model' => 'deepseek',
+            'model' => 'deepseek-chat',
             'messages' => [
                 ['role' => 'system', 'content' => $systemMessage],
                 ['role' => 'user', 'content' => $userQuery],
