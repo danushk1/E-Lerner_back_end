@@ -77,7 +77,7 @@ EOT;
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
-$color = isset($json['color']) && is_string($json['color']) ? $json['color'] : null;
+
         $select = [];
         $userColumns = $json['columns'] ?? [];
 
@@ -164,7 +164,6 @@ if ($col === 'item_name') {
     'columns' => $userColumns,
     'group_by' => $json['group_by'] ?? null,
     'aggregation' => $json['aggregation'] ?? null,
-    'color' => $color,
 ]);
 
 
