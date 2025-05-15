@@ -60,7 +60,7 @@ EOT;
             ],
         ]);
 
-dd($openAiResponse);
+
 if ($openAiResponse->failed()) {
             return response()->json([
                 'error' => 'DeepSeek API request failed',
@@ -83,7 +83,7 @@ if ($openAiResponse->failed()) {
         if (!$structured) {
             return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
         }
-
+dd($structured);
         $json = json_decode($structured, true);
 
         if (!isset($json['action']) || !isset($json['field'])) {
