@@ -83,9 +83,9 @@ if ($openAiResponse->failed()) {
         if (!$structured) {
             return response()->json(['error' => 'Invalid response from OpenAI. No content found.'], 422);
         }
-dd($structured);
-        $json = json_decode($structured, true);
 
+        $json = json_decode($structured, true);
+dd($json);
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
