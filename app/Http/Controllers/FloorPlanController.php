@@ -95,7 +95,7 @@ if (str_ends_with($structured, '```')) {
 $structured = trim($structured, " \t\n\r\0\x0B`");
 
 $json = json_decode($structured, true);
-dd($json);
+
         if (!isset($json['action']) || !isset($json['field'])) {
             return response()->json(['error' => 'Missing required fields in response.'], 422);
         }
