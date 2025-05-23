@@ -3,10 +3,12 @@
 use App\Events\NotificationEvent;
 use App\Http\Controllers\Api\OpenAIController;
 use App\Http\Controllers\ChartAssistantController;
+use App\Http\Controllers\detectDiseaseController;
 use App\Http\Controllers\EmbeddingController;
 use App\Http\Controllers\FloorPlanController;
 use App\Http\Controllers\itemhistorycontroller;
 use App\Http\Controllers\MyCoursessController;
+use App\Http\Controllers\PaperController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\SubjectEmbeddingController;
 use App\Http\Controllers\SubjectSearchController;
@@ -44,3 +46,8 @@ Route::post('/chart/generate', [itemhistorycontroller::class, 'generate']);
 
 // routes/api.php
 Route::post('/admin_dashboard', [FloorPlanController::class, 'generate']);
+
+Route::post('/save_paper', [PaperController::class, 'store']);
+
+//detect-disease
+Route::post('/detect-disease', [detectDiseaseController::class, 'detect']);
